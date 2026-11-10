@@ -107,6 +107,23 @@ summary{cursor:pointer;color:var(--ink2)}
       <ul class="list" id="macl" style="list-style:none;padding:0;margin:0"></ul>
     </div>
   </div>
+  <details class="card" id="reads" style="margin:0 0 12px">
+    <summary><b>Add your own research</b> <span class="small" id="rsum"></span></summary>
+    <div style="margin-top:10px">
+      <div class="small" style="max-width:900px;margin-bottom:8px">Paste the link to a Substack post (or any article) and its text, and the page will work out which screened stocks it covers and keep it against them. A web page cannot open another site's article from a link alone, so the text has to be pasted: open the post, select all, copy, paste below. Everything stays in this browser; nothing is uploaded.</div>
+      <div style="display:grid;gap:8px;max-width:900px">
+        <input type="search" id="rurl" placeholder="Link to the post, e.g. https://thebearcave.substack.com/p/..." aria-label="Link to the post">
+        <input type="search" id="rtitle" placeholder="Title (optional; taken from the first line of the text if left blank)" aria-label="Title">
+        <textarea id="rtext" rows="5" placeholder="Paste the article text here" aria-label="Article text" style="font:inherit;padding:8px;border:1px solid var(--axis);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical"></textarea>
+        <div><button class="btn" id="rgo" type="button">Digest</button> <span class="small" id="rmsg"></span></div>
+      </div>
+      <div id="rout" style="margin-top:10px"></div>
+      <h3 class="h3" style="margin-top:14px">Your saved reads</h3>
+      <ul class="list" id="rlist" style="list-style:none;padding:0;margin:0"></ul>
+      <h3 class="h3" style="margin-top:14px">Publications not scanned automatically</h3>
+      <div class="small" id="rpubs"></div>
+    </div>
+  </details>
   <div class="card" id="fac" style="margin-bottom:12px"></div>
   <details class="card" id="wcard" style="margin:0 0 12px">
     <summary><b>Score weights</b> <span class="small" id="wsum"></span></summary>
@@ -159,6 +176,30 @@ function weightsUI(){var l=st.lens;$('wbody').innerHTML='<div class="small" styl
  '<p style="margin:10px 0 0"><button class="btn" id="wreset" type="button">Reset to default</button></p>';wlabels()}
 function wchanged(){try{localStorage.setItem('vrd_weights',JSON.stringify(W))}catch(e){}rescore();wlabels();tiles();scatter();sidelists();table()}
 document.addEventListener('input',function(ev){var k=ev.target&&ev.target.dataset&&ev.target.dataset.w;if(!k)return;W[st.lens][k]=+ev.target.value;wchanged()});
+var READS=[];try{READS=JSON.parse(localStorage.getItem('vrd_reads')||'[]')||[]}catch(e){READS=[]}
+var PATS=null,RSTOP={ALL:1,IT:1,ON:1,NOW:1,ARE:1,SO:1,KEY:1,WELL:1,DAY:1,HAS:1,LOW:1,PEG:1,CAT:1,FAST:1,COST:1,TECH:1,PAYC:1,POOL:1,ICE:1,BALL:1,GEN:1};
+function rxe(x){return x.replace(/[.*+?$()|[\]{}\\-]/g,'\\$&')}
+function pats(){if(PATS)return PATS;PATS=S.map(function(s){var c=rxe(s.code),a=[];
+ if(s.m==='ASX'){a.push('ASX:\\s?'+c+'\\b','\\b'+c+'\\.AX\\b')}else{a.push('\\$'+c+'\\b','(?:NYSE|NASDAQ|Nasdaq):\\s?'+c+'\\b');if(s.code.length>=3&&!RSTOP[s.code])a.push('\\('+c+'\\)')}
+ var nm=(s.name||'').replace(/\s*\(.*?\)/g,''),prev;do{prev=nm;nm=nm.replace(/[,\s]+(Inc\.?|Corp\.?|Corporation|Company|Co\.?|Limited|Ltd\.?|Group|Holdings?|plc|N\.V\.|& Co\.?|Incorporated|Trust|Technologies)$/i,'')}while(nm!==prev);
+ if((nm.length>=8||/\s/.test(nm))&&nm.length>=6)a.push('\\b'+rxe(nm)+'\\b');return [s,new RegExp(a.join('|'),'g')]});return PATS}
+function digest(text){var out=[];pats().forEach(function(p){var m=text.match(p[1]);if(m)out.push({s:p[0],n:m.length})});out.sort(function(a,b){return b.n-a.n});return out}
+function rsave(){try{localStorage.setItem('vrd_reads',JSON.stringify(READS))}catch(e){}}
+function readsFor(y){return READS.filter(function(r){return r.h.some(function(h){return h[0]===y})})}
+function byY(y){return S.filter(function(x){return x.y===y})[0]}
+function hitLine(hs){return hs.slice(0,14).map(function(h){var s=byY(h[0]);return s?dot(K(s))+' <a href="#" data-go="'+e(s.y)+'" title="'+e(s.name)+' · '+e(VD()[K(s)][0])+' · growth '+(s.gs==null?'n/a':s.gs)+', value '+(s.val==null?'n/a':s.val)+'">'+e(s.code)+'</a> <small>×'+h[1]+'</small>':''}).join(' ')+(hs.length>14?' <small>+'+(hs.length-14)+' more</small>':'')}
+function readsUI(){$('rsum').textContent='· '+(READS.length?READS.length+' saved':'paste a Substack post to see which screened stocks it covers');
+ $('rlist').innerHTML=READS.length?READS.map(function(r,i){return '<li>'+(r.u?'<a href="'+e(r.u)+'" target="_blank" rel="noopener">'+e(r.t)+'</a>':e(r.t))+' <a href="#" data-rdel="'+i+'" class="small">remove</a><br><span class="small">'+dstr(r.d)+' · '+(r.h.length?'covers '+hitLine(r.h):'no screened stocks found')+'</span></li>'}).join(''):'<li class="small">Nothing saved yet.</li>';
+ var lo=(D.substacks||[]).filter(function(f){return f.src==='link only'});
+ $('rpubs').innerHTML=lo.length?'These are on substack.com addresses, which refuse the server that builds this page, so open them yourself and paste anything worth keeping: '+lo.map(function(f){return '<a href="'+e(f.url)+'" target="_blank" rel="noopener">'+e(f.name)+'</a>'+(f.tag&&f.tag!=='value'?' <small>('+e(f.tag)+')</small>':'')}).join(', ')+'.':'All tracked publications are scanned automatically.'}
+function rgo(){var u=$('rurl').value.trim(),tx=$('rtext').value,ti=$('rtitle').value.trim();
+ if(u&&!/^https?:\/\/\S+$/i.test(u)){$('rmsg').textContent='That link does not look like a web address.';return}
+ if(tx.trim().length<40){$('rmsg').textContent='Paste the article text as well: the page cannot open the link itself.';return}
+ if(!ti)ti=(tx.trim().split(/\n/)[0]||'Untitled').slice(0,140);
+ var hs=digest($('rtitle').value.trim()?ti+'\n'+tx:tx),r={u:u,t:ti,d:new Date().toISOString(),h:hs.map(function(x){return [x.s.y,x.n]})};
+ READS=READS.filter(function(x){return !(u&&x.u===u)});READS.unshift(r);READS=READS.slice(0,200);rsave();
+ $('rout').innerHTML='<div class="card" style="background:var(--page)"><b>'+e(ti)+'</b><br>'+(hs.length?'<span class="small">Mentions '+hs.length+' screened stock'+(hs.length>1?'s':'')+' (most mentioned first). Click a code to open it.</span><div style="margin-top:6px;line-height:2">'+hitLine(r.h)+'</div>':'<span class="small">No stocks from the three indices were recognised in that text. It is saved anyway.</span>')+'</div>';
+ $('rmsg').textContent='Saved in this browser.';$('rurl').value='';$('rtitle').value='';$('rtext').value='';readsUI();table()}
 function G(){return st.lens==='growth'}
 function K(s){return G()?(s.gv||'na'):s.verdict}
 function VD(){return G()?GV:V}
@@ -171,7 +212,7 @@ function sg(v,d,suf){return v==null?'<span class="small">n/a</span>':'<span clas
 function dot(k){return '<i class="dot" style="background:var('+(V[k]||GV[k])[1]+')"></i>'}
 function recL(r){return r==null?'n/a':r<=1.5?'Strong buy':r<=2.2?'Buy':r<2.8?'Hold':r<3.5?'Underperform':'Sell'}
 function cap(s){var v=s.mcap;if(!v)return 'n/a';var c=s.cur==='AUD'?'A$':'US$';return c+(v>=1e12?(v/1e12).toFixed(2)+'tn':v>=1e9?(v/1e9).toFixed(1)+'bn':(v/1e6).toFixed(0)+'m')}
-function nres(s){return (s.subs?s.subs.length:0)+(s.news?s.news.length:0)+(s.xposts?s.xposts.length:0)}
+function nres(s){return readsFor(s.y).length+(s.subs?s.subs.length:0)+(s.news?s.news.length:0)+(s.xposts?s.xposts.length:0)}
 function dstr(d){var t=new Date(d);return isNaN(t)?'':t.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}
 function xq(s){var q=s.m==='ASX'?'("ASX:'+s.code+'" OR "'+s.code+'.AX" OR "$'+s.code+'")':'"$'+s.code+'"';return 'https://x.com/search?q='+encodeURIComponent(q+' (research OR "price target" OR upgrade OR downgrade OR valuation)')+'&f=live'}
 function ssq(s){return 'https://substack.com/search/'+encodeURIComponent(s.name)+'?searching=all_posts'}
@@ -299,7 +340,8 @@ function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f
  if(s.acts&&s.acts.length)h+='<ul>'+s.acts.map(function(a){var w=a.a==='up'?'<span class="pos">Upgrade</span>':a.a==='down'?'<span class="neg">Downgrade</span>':a.a==='init'?'Initiation':'Reiterated';return '<li>'+e(a.d)+' <b>'+e(a.firm)+'</b>: '+w+' '+(a.from&&a.from!==a.to?e(a.from)+' → ':'')+e(a.to||'')+(a.pt?' · target '+(a.ppt&&a.ppt!==a.pt?a.ppt+' → ':'')+a.pt:'')+'</li>'}).join('')+'</ul>';
  else h+='<p class="small">No dated broker rating changes in the last 120 days'+(s.m==='ASX'?' (Yahoo carries few for ASX stocks)':'')+'.</p>';
  h+='</div><div><h3>Published research</h3>';
- if(s.subs)h+='<div class="small">Substack</div><ul>'+s.subs.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s)+(x.k&&x.k!=='value'?' ('+e(x.k)+')':'')+' · '+dstr(x.d)+(x.w==='body'?' · mentioned in text':'')+'</small></li>'}).join('')+'</ul>';
+ var mr=readsFor(s.y);if(mr.length)h+='<div class="small">Your saved reads</div><ul>'+mr.map(function(r){return '<li>'+(r.u?'<a href="'+e(r.u)+'" target="_blank" rel="noopener">'+e(r.t)+'</a>':e(r.t))+' <small>'+dstr(r.d)+'</small></li>'}).join('')+'</ul>';
+ if(s.subs)h+='<div class="small">Substack and independent research</div><ul>'+s.subs.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s)+(x.k&&x.k!=='value'?' ('+e(x.k)+')':'')+' · '+dstr(x.d)+(x.w==='body'?' · mentioned in text':'')+'</small></li>'}).join('')+'</ul>';
  if(s.news)h+='<div class="small">Broker headlines (30 days)</div><ul>'+s.news.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
  if(s.xposts)h+='<div class="small">X posts</div><ul>'+s.xposts.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t.slice(0,180))+'</a> <small>@'+e(x.by||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
  h+='<p><a class="btn" href="'+xq(s)+'" target="_blank" rel="noopener">Search X for research</a> <a class="btn" href="'+ssq(s)+'" target="_blank" rel="noopener">Search Substack</a> <a class="btn" href="https://finance.yahoo.com/quote/'+encodeURIComponent(s.y)+'/analysis" target="_blank" rel="noopener">Yahoo analysis</a></p></div></div>';return h}
@@ -309,11 +351,13 @@ function filters(){var a=cur(),secs={};a.forEach(function(s){secs[s.sector]=1});
  $('fs').innerHTML='<option value="">All sectors</option>'+Object.keys(secs).sort().map(function(k){return '<option'+(st.s===k?' selected':'')+'>'+e(k)+'</option>'}).join('')}
 function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.lens?t.dataset.lens===st.lens:t.dataset.m===st.m)});
  $('lensd').textContent=G()?'Looks for companies whose growth is strong and speeding up, with high margins, rising analyst estimates, a rising share price and room to take share. Valuation is deliberately ignored here; use the value lens for that.':'Looks for stocks that are cheap against their sector, then checks whether published research agrees.';
- tiles();filters();weightsUI();scatter();sidelists();macro();if(G())$('fac').style.display='none';else factor();table()}
+ tiles();filters();weightsUI();readsUI();scatter();sidelists();macro();if(G())$('fac').style.display='none';else factor();table()}
 function go(y){var s=S.filter(function(x){return x.y===y})[0];if(!s)return;st.v='';st.s='';st.q='';st.r=false;$('fq').value='';$('fr').checked=false;st.open=y;filters();scatter();table();var r=document.querySelector('tr.row.open');if(r)r.scrollIntoView({behavior:'smooth',block:'start'})}
 
 document.addEventListener('click',function(ev){var t=ev.target,x;
  if(x=t.closest('.tab')){if(x.dataset.lens){st.lens=x.dataset.lens;st.sort=G()?'gs':'val';st.dir=-1;st.v=''}else{st.m=x.dataset.m;st.s=''}st.open=null;try{history.replaceState(null,'','#'+st.lens+'-'+st.m)}catch(e){}all();return}
+ if(t.id==='rgo'){rgo();return}
+ if(x=t.closest('[data-rdel]')){ev.preventDefault();READS.splice(+x.dataset.rdel,1);rsave();readsUI();table();return}
  if(t.id==='wreset'){W[st.lens]=JSON.parse(JSON.stringify(WD[st.lens]));weightsUI();wchanged();return}
  if(x=t.closest('[data-go]')){ev.preventDefault();go(x.dataset.go);return}
  if(x=t.closest('circle[data-y]')){go(x.dataset.y);return}
@@ -337,7 +381,7 @@ $('method').innerHTML='<p><b>Growth inflection score (0 to 100).</b> Each stock 
 '<p><b>Street view.</b> Bullish = consensus rating 2.2 or better (1 = strong buy, 5 = sell) and 10%+ upside to the mean target; bearish = rating 2.8 or worse, or no upside; otherwise neutral. Fewer than 3 analysts = thin coverage.</p>'+
 '<p><b>Value-trap flags.</b> Forward EPS below trailing, ROE under 5%, debt/equity over 200% (ex financials and real estate), price more than 15% under its 200-day average, net broker downgrades in 120 days, short interest of 5%+ (ASX) or 8%+ of float (S&amp;P 500).</p>'+
 '<p><b>Short interest.</b> ASX: ASIC daily aggregated short positions as a share of shares on issue'+(D.short_date?' (report dated '+e(D.short_date)+'; ASIC publishes about four trading days in arrears)':'')+', with the change over about 20 trading days. S&amp;P 500: short interest as a share of float from Yahoo (exchange data, twice a month). A cheap stock with heavy or rising shorts is one where professional money is betting the screen is wrong.</p>'+
-'<p><b>Published research.</b> Broker consensus, targets and dated rating changes from Yahoo Finance. Broker headlines from Google News for the 25 cheapest names per index. Independent research: the latest ~20 posts of each tracked Substack or research site are scanned for tickers and company names ('+ss.length+' tracked: '+ss.map(function(x){return '<a href="'+e(x.url)+'" target="_blank" rel="noopener">'+e(x.name)+'</a>'+(x.src&&x.src!=='live'?' <span class="small">['+e(x.src)+']</span>':'')}).join(', ')+'). Substack refuses GitHub\'s servers on substack.com addresses, so those feeds come from a saved copy refreshed from a PC; paid posts are matched on title and preview only. X: '+(D.x_api?'recent posts pulled through the X API for the cheapest names.':'X has no free read access, so each stock has a one-click X search link; posts appear here if an X API token is added.')+'</p>'+
+'<p><b>Published research.</b> Broker consensus, targets and dated rating changes from Yahoo Finance. Broker headlines from Google News for the 25 cheapest names per index. Independent research: the latest ~20 posts of each tracked Substack or research site are scanned for tickers and company names ('+ss.length+' tracked: '+ss.map(function(x){return '<a href="'+e(x.url)+'" target="_blank" rel="noopener">'+e(x.name)+'</a>'+(x.src&&x.src!=='live'?' <span class="small">['+e(x.src)+']</span>':'')}).join(', ')+'). Publications marked [link only] are on substack.com addresses, which refuse the server that builds this page, so they are not scanned; use "Add your own research" to paste in posts from them. Paid posts are matched on title and preview only. X: '+(D.x_api?'recent posts pulled through the X API for the cheapest names.':'X has no free read access, so each stock has a one-click X search link; posts appear here if an X API token is added.')+'</p>'+
 '<p><b>Limits.</b> Yahoo data has gaps and occasional errors, especially for ASX stocks that report in another currency, banks and insurers (EV/EBITDA and FCF do not apply) and REITs. Consensus numbers are averages of broker views, not the reports themselves. Name matching in Substack posts can produce false positives.</p>'+
 '<p><b>Value factor.</b> Monthly Fama/French factors from the Ken French Data Library (US from July 1963; Asia Pacific ex Japan from July 1990). Bear markets are peak-to-trough falls of 20% or more in the monthly total-return market index. The value spread is computed here from the library\'s NYSE book-to-market breakpoints and is a simple proxy, not an official series.</p>'+
 (D.log?'<p class="small">Last run: '+D.log.map(e).join(' · ')+'</p>':'');

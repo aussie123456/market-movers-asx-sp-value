@@ -39,6 +39,8 @@ sub scan_feeds { my ($stocks, $cache) = @_;
     my $re = join '|', @alt; push @pat, [$s->{y}, qr/$re/];
   }
   for my $f (@$cfg) {
+    # substack.com addresses refuse GitHub's servers; they are listed on the page as links only, not scanned.
+    if ($f->{feed} =~ m{^https?://[^/]*\.substack\.com/}) { push @meta, { name => $f->{name}, url => $f->{url}, feed => $f->{feed}, tag => ($f->{tag} // 'value'), posts => 0, hits => 0, src => 'link only', items => [], latest => [] }; next; }
     my ($x, $code) = ('', '');
     for my $ua ($UA, 'curl/8') { $x = `curl -sS -L --compressed --max-time 30 -A '$ua' -H 'Accept: application/rss+xml, application/xml, text/xml' -w ' HTTPCODE=%{http_code}' '$f->{feed}' 2>/dev/null` // ''; ($code) = $x =~ /HTTPCODE=(\d+)\s*$/; last if $x =~ /<item>/; sleep 1; }
     utf8::decode($x); my @items; my $src = 'live';
@@ -51,16 +53,6 @@ sub scan_feeds { my ($stocks, $cache) = @_;
       for ($head, $body, $g{title}) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; s/&#8217;|&#039;|&#39;/'/g; s/&#8211;/-/g; s/&quot;/"/g; }
       my @h; for my $p (@pat) { my ($y, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next; push @h, [$y, $where]; }
       push @items, { t => $g{title}, u => $g{link}, d => $g{pubDate}, h => \@h };
-    }
-    if (!@items) {   # relay: rss2json.com fetches the feed from its own servers (latest 10 posts)
-      my $r = js(`curl -sS -L --max-time 40 'https://api.rss2json.com/v1/api.json?rss_url=@{[esc($f->{feed})]}' 2>/dev/null` // '');
-      if ($r && ($r->{status} // '') eq 'ok') {
-        for my $it (@{$r->{items} // []}) { my $head = ($it->{title} // '').' . '.($it->{description} // ''); (my $body = $it->{content} // '') =~ s/<[^>]+>/ /g; $head =~ s/<[^>]+>/ /g;
-          for ($head, $body) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; }
-          my @h; for my $p (@pat) { my ($y, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next; push @h, [$y, $where]; }
-          push @items, { t => $it->{title}, u => $it->{link}, d => $it->{pubDate}, h => \@h }; }
-        $src = 'relay' if @items; }
-      sleep 1.2;
     }
     if (!@items) { $codes{$code // 'none'}++; if ($cache && $cache->{feeds}{$f->{feed}}) { my $c = $cache->{feeds}{$f->{feed}}; @items = @{$c->{items} // []}; $src = "saved copy $c->{fetched}"; } else { $src = 'unreadable' } }
     my $nh = 0; for my $it (@items) { for my $hit (@{$it->{h} // []}) { push @{$hits{$hit->[0]}}, { t => $it->{t}, u => $it->{u}, d => $it->{d}, s => $f->{name}, w => $hit->[1], k => ($f->{tag} // 'value') }; $nh++; } }
@@ -302,12 +294,12 @@ note("news: $news_ok of ".scalar(@focus)." focus names have broker headlines");
 # Research feeds: live where readable, otherwise the saved copy in data/feeds.json.
 my @subs_meta;
 {
-  my $cache = js(slurp('data/feeds.json'));
+  my $cache = undef;
   my ($hits, $meta, $codes) = scan_feeds([grep { !$_->{stale} } @S], $cache);
   for my $s (@S) { my $x = $hits->{$s->{y}} or next; my %seen; my @x = grep { !$seen{$_->{u}}++ } sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @$x; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
-  my ($live, $saved, $nh, $relay) = (0, 0, 0, 0); for (@$meta) { $live++ if $_->{src} eq 'live'; $relay++ if $_->{src} eq 'relay'; $saved++ if $_->{src} =~ /^saved/; $nh += $_->{hits}; delete $_->{items}; delete $_->{feed}; }
+  my ($live, $saved, $nh, $relay) = (0, 0, 0, 0); for (@$meta) { $live++ if $_->{src} eq 'live'; $relay++ if $_->{src} eq 'link only'; $saved++ if $_->{src} =~ /^saved/; $nh += $_->{hits}; delete $_->{items}; delete $_->{feed}; }
   @subs_meta = @$meta;
-  note("research feeds: ".scalar(@$meta)." tracked, $live read live, $relay through the relay, $saved from the saved copy".($cache ? " ($cache->{fetched})" : "").", ".(scalar(@$meta) - $live - $saved - $relay)." unreadable, $nh stock mentions".(%$codes ? "; live failures by HTTP status: ".join(', ', map { "$_ x$codes->{$_}" } sort keys %$codes) : ""));
+  note("research feeds: ".scalar(@$meta)." tracked, $live scanned, $relay link only (substack.com address)".", ".(scalar(@$meta) - $live - $relay)." unreadable, $nh stock mentions".(%$codes ? "; live failures by HTTP status: ".join(', ', map { "$_ x$codes->{$_}" } sort keys %$codes) : ""));
 }
 
 my $xtok = $ENV{X_BEARER_TOKEN} // '';
