@@ -75,25 +75,31 @@ summary{cursor:pointer;color:var(--ink2)}
   <div class="top">
     <div>
       <h1>Value vs Research Desk</h1>
-      <p class="sub">A quantitative value screen of the S&amp;P/ASX 200 and S&amp;P 500, run against what published research says: broker consensus and target prices, recent rating changes, broker headlines, Substack write-ups and X.</p>
+      <p class="sub">Two screens of the S&amp;P/ASX 200, S&amp;P 500 and S&amp;P MidCap 400: a growth-inflection screen for companies that are speeding up and taking share, and a value screen run against what published research says (broker consensus and targets, rating changes, headlines, Substack and independent research, X).</p>
     </div>
     <div class="meta"><div id="gen"></div><a class="btn" id="refresh" style="display:none;margin-top:6px" target="_blank" rel="noopener">Refresh data</a></div>
   </div>
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" data-m="ASX">S&amp;P/ASX 200</button>
-    <button class="tab" role="tab" data-m="SPX">S&amp;P 500</button>
+  <div class="tabs" role="tablist" aria-label="Lens" style="margin-bottom:6px">
+    <button class="tab lens" role="tab" data-lens="growth">Growth inflection</button>
+    <button class="tab lens" role="tab" data-lens="value">Value vs research</button>
+  </div>
+  <p class="small" id="lensd" style="margin:0 0 8px;max-width:900px"></p>
+  <div class="tabs" role="tablist" aria-label="Market" style="margin-top:0">
+    <button class="tab mk" role="tab" data-m="ASX">S&amp;P/ASX 200</button>
+    <button class="tab mk" role="tab" data-m="SPX">S&amp;P 500</button>
+    <button class="tab mk" role="tab" data-m="MID">S&amp;P MidCap 400</button>
   </div>
   <div class="tiles" id="tiles"></div>
   <div class="grid2">
     <div class="card">
-      <h2>Screen vs Street: value score against consensus target upside</h2>
-      <div class="small">Each dot is a stock. Right = cheaper on the screen. Up = more upside to the average broker target. Click a dot for the research.</div>
+      <h2 id="sch"></h2>
+      <div class="small" id="scd"></div>
       <svg id="sc" viewBox="0 0 720 380" width="100%" role="img" aria-label="Scatter of value score against target upside"></svg>
       <div class="legend" id="legend"></div>
     </div>
     <div class="card">
-      <h2>Where the screen and the Street disagree most</h2>
-      <div class="small">Cheap on the screen, but brokers are bearish or see no upside. Either the market is missing something or it is a value trap.</div>
+      <h2 id="dh"></h2>
+      <div class="small" id="dd"></div>
       <ul class="list" id="dis" style="list-style:none;padding:0;margin:8px 0 0"></ul>
       <h2 style="margin-top:14px">Latest independent research on screened stocks (Substack, short sellers, activists)</h2>
       <ul class="list" id="subl" style="list-style:none;padding:0;margin:0"></ul>
@@ -125,13 +131,19 @@ summary{cursor:pointer;color:var(--ink2)}
 var D=JSON.parse(document.getElementById('d-data').textContent||'{}'), S=D.stocks||[];
 var V={agree:['Cheap, Street agrees','--c-agree'],disagree:['Cheap, Street disagrees','--c-disagree'],quiet:['Cheap, Street neutral','--c-quiet'],uncovered:['Cheap, thin coverage','--c-uncovered'],crowded:['Expensive, Street bullish','--c-crowded'],other:['Neither','--c-other'],na:['Not scored','--c-other']};
 var VO=['agree','disagree','quiet','uncovered','crowded','other'];
-var st={m:'ASX',sort:'val',dir:-1,open:null,v:'',s:'',q:'',r:false};
-try{var h=location.hash.replace('#','');if(h==='SPX'||h==='ASX')st.m=h}catch(e){}
+var GV={inflect:['Inflecting: strong and accelerating','--c-agree'],compound:['Strong, not accelerating','--c-quiet'],early:['Early signs: accelerating','--c-uncovered'],other:['Neither','--c-other'],na:['Not scored','--c-other']};
+var GVO=['inflect','compound','early','other'];
+var st={lens:'growth',m:'SPX',sort:'gs',dir:-1,open:null,v:'',s:'',q:'',r:false};
+function G(){return st.lens==='growth'}
+function K(s){return G()?(s.gv||'na'):s.verdict}
+function VD(){return G()?GV:V}
+function VOo(){return G()?GVO:VO}
+try{var h=location.hash.replace('#','').split('-');if(h[0]==='value'){st.lens='value';st.sort='val'}if(h[1]==='SPX'||h[1]==='ASX'||h[1]==='MID')st.m=h[1]}catch(e){}
 function $(i){return document.getElementById(i)}
 function e(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function f(v,d,suf){return v==null?'<span class="small">n/a</span>':Number(v).toFixed(d==null?1:d)+(suf||'')}
 function sg(v,d,suf){return v==null?'<span class="small">n/a</span>':'<span class="'+(v>0?'pos':v<0?'neg':'')+'">'+(v>0?'+':'')+Number(v).toFixed(d==null?1:d)+(suf||'')+'</span>'}
-function dot(k){return '<i class="dot" style="background:var('+V[k][1]+')"></i>'}
+function dot(k){return '<i class="dot" style="background:var('+(V[k]||GV[k])[1]+')"></i>'}
 function recL(r){return r==null?'n/a':r<=1.5?'Strong buy':r<=2.2?'Buy':r<2.8?'Hold':r<3.5?'Underperform':'Sell'}
 function cap(s){var v=s.mcap;if(!v)return 'n/a';var c=s.cur==='AUD'?'A$':'US$';return c+(v>=1e12?(v/1e12).toFixed(2)+'tn':v>=1e9?(v/1e9).toFixed(1)+'bn':(v/1e6).toFixed(0)+'m')}
 function nres(s){return (s.subs?s.subs.length:0)+(s.news?s.news.length:0)+(s.xposts?s.xposts.length:0)}
@@ -139,33 +151,47 @@ function dstr(d){var t=new Date(d);return isNaN(t)?'':t.toLocaleDateString('en-A
 function xq(s){var q=s.m==='ASX'?'("ASX:'+s.code+'" OR "'+s.code+'.AX" OR "$'+s.code+'")':'"$'+s.code+'"';return 'https://x.com/search?q='+encodeURIComponent(q+' (research OR "price target" OR upgrade OR downgrade OR valuation)')+'&f=live'}
 function ssq(s){return 'https://substack.com/search/'+encodeURIComponent(s.name)+'?searching=all_posts'}
 function cur(){return S.filter(function(s){return s.m===st.m})}
-function shown(){var q=st.q.toLowerCase();return cur().filter(function(s){return(!st.v||s.verdict===st.v)&&(!st.s||s.sector===st.s)&&(!q||(s.code+' '+s.name).toLowerCase().indexOf(q)>=0)&&(!st.r||nres(s)>0)})}
+function shown(){var q=st.q.toLowerCase();return cur().filter(function(s){return(!st.v||K(s)===st.v)&&(!st.s||s.sector===st.s)&&(!q||(s.code+' '+s.name).toLowerCase().indexOf(q)>=0)&&(!st.r||nres(s)>0)})}
 
-function tiles(){var a=cur(),n=function(k){return a.filter(function(s){return s.verdict===k}).length};
+function med(a){a=a.filter(function(x){return x!=null}).sort(function(x,y){return x-y});return a.length?a[Math.floor(a.length/2)]:null}
+function tiles(){var a=cur(),n=function(k){return a.filter(function(s){return K(s)===k}).length};
+ if(G()){var mg=med(a.map(function(s){return s.rg})),t=[[a.length,'Stocks screened',''],[n('inflect'),GV.inflect[0],'inflect'],[n('early'),GV.early[0],'early'],[n('compound'),GV.compound[0],'compound'],[a.filter(function(s){return s.gv==='inflect'&&s.cont}).length,'Inflecting and contested (shorts or sceptical brokers)',''],[mg==null?'n/a':(mg>0?'+':'')+mg.toFixed(1)+'%','Median revenue growth','']];
+  $('tiles').innerHTML=t.map(function(x){return '<div class="card tile"><div class="n">'+x[0]+'</div><div class="l">'+(x[2]?dot(x[2]):'')+e(x[1])+'</div></div>'}).join('');return}
+
  var val=a.filter(function(s){return s.val>=70}).length, subs=a.filter(function(s){return s.subs}).length;
  var t=[[a.length,'Stocks screened',''],[val,'Cheap on the screen (score 70+)',''],[n('agree'),V.agree[0],'agree'],[n('disagree'),V.disagree[0],'disagree'],[n('quiet')+n('uncovered'),'Cheap, Street neutral or thin','quiet'],[subs,'With a Substack mention','']];
  $('tiles').innerHTML=t.map(function(x){return '<div class="card tile"><div class="n">'+x[0]+'</div><div class="l">'+(x[2]?dot(x[2]):'')+e(x[1])+'</div></div>'}).join('')}
 
-function scatter(){var a=shown().filter(function(s){return s.val!=null&&s.up!=null}),W=720,H=380,L=44,R=14,T=12,B=36,y0=-40,y1=80;
- function X(v){return L+(W-L-R)*v/100} function Y(v){v=Math.max(y0,Math.min(y1,v));return T+(H-T-B)*(1-(v-y0)/(y1-y0))}
- var g='';for(var y=y0;y<=y1;y+=20)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(y)+'" y2="'+Y(y)+'" stroke="var(--'+(y===0?'axis':'grid')+')"/><text x="'+(L-6)+'" y="'+(Y(y)+4)+'" text-anchor="end">'+(y>0?'+':'')+y+'%</text>';
- for(var x=0;x<=100;x+=20)g+='<text x="'+X(x)+'" y="'+(H-B+16)+'" text-anchor="middle">'+x+'</text>';
- g+='<line x1="'+X(70)+'" x2="'+X(70)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--axis)" stroke-dasharray="3 4"/><text x="'+(X(70)+6)+'" y="'+(T+10)+'">cheap on the screen</text>';
- g+='<text x="'+((L+W-R)/2)+'" y="'+(H-4)+'" text-anchor="middle">Value score (0 = expensive vs sector, 100 = cheap)</text>';
- g+='<text transform="translate(11,'+((T+H-B)/2)+') rotate(-90)" text-anchor="middle">Upside to mean target</text>';
- a.sort(function(p,q){return (p.verdict==='other')===(q.verdict==='other')?0:p.verdict==='other'?-1:1});
- a.forEach(function(s){var o=s.verdict==='other';g+='<circle data-y="'+e(s.y)+'" cx="'+X(s.val).toFixed(1)+'" cy="'+Y(s.up).toFixed(1)+'" r="'+(o?3.5:5)+'" fill="var('+V[s.verdict][1]+')" stroke="var(--surface)" stroke-width="'+(o?1:2)+'" style="cursor:pointer"/>'});
- // direct labels: top few disagreements and agreements
- ['agree','disagree'].forEach(function(k){a.filter(function(s){return s.verdict===k}).sort(function(p,q){return q.val-p.val}).slice(0,4).forEach(function(s){g+='<text x="'+(X(s.val)+8)+'" y="'+(Y(s.up)+4)+'" style="fill:var(--ink2)">'+e(s.code)+'</text>'})});
+function scatter(){var gl=G(),a=shown().filter(function(s){return gl?(s.rg!=null&&s.ra!=null&&s.gs!=null):(s.val!=null&&s.up!=null)}),W=720,H=380,L=44,R=14,T=12,B=36;
+ var x0=gl?-20:0,x1=100,y0=gl?-40:-40,y1=gl?60:80,xv=function(s){return gl?s.rg:s.val},yv=function(s){return gl?s.ra:s.up};
+ function X(v){v=Math.max(x0,Math.min(x1,v));return L+(W-L-R)*(v-x0)/(x1-x0)} function Y(v){v=Math.max(y0,Math.min(y1,v));return T+(H-T-B)*(1-(v-y0)/(y1-y0))}
+ var g='';for(var y=y0;y<=y1;y+=20)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(y)+'" y2="'+Y(y)+'" stroke="var(--'+(y===0?'axis':'grid')+')"/><text x="'+(L-6)+'" y="'+(Y(y)+4)+'" text-anchor="end">'+(y>0?'+':'')+y+(gl?'pp':'%')+'</text>';
+ for(var x=x0;x<=x1;x+=20)g+='<text x="'+X(x)+'" y="'+(H-B+16)+'" text-anchor="middle">'+(gl?(x>0?'+':'')+x+'%':x)+'</text>';
+ if(gl)g+='<line x1="'+X(0)+'" x2="'+X(0)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--axis)"/><text x="'+(W-R)+'" y="'+(T+10)+'" text-anchor="end">growing fast and speeding up</text>';
+ else g+='<line x1="'+X(70)+'" x2="'+X(70)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--axis)" stroke-dasharray="3 4"/><text x="'+(X(70)+6)+'" y="'+(T+10)+'">cheap on the screen</text>';
+ g+='<text x="'+((L+W-R)/2)+'" y="'+(H-4)+'" text-anchor="middle">'+(gl?'Revenue growth, latest quarter vs a year ago (capped at +100%)':'Value score (0 = expensive vs sector, 100 = cheap)')+'</text>';
+ g+='<text transform="translate(11,'+((T+H-B)/2)+') rotate(-90)" text-anchor="middle">'+(gl?'Acceleration vs last full year':'Upside to mean target')+'</text>';
+ a.sort(function(p,q){return (K(p)==='other')===(K(q)==='other')?0:K(p)==='other'?-1:1});
+ a.forEach(function(s){var o=K(s)==='other';g+='<circle data-y="'+e(s.y)+'" cx="'+X(xv(s)).toFixed(1)+'" cy="'+Y(yv(s)).toFixed(1)+'" r="'+(o?3.5:5)+'" fill="var('+VD()[K(s)][1]+')" stroke="var(--surface)" stroke-width="'+(o?1:2)+'" style="cursor:pointer"/>'});
+ (gl?['inflect']:['agree','disagree']).forEach(function(k){a.filter(function(s){return K(s)===k}).sort(function(p,q){return gl?q.gs-p.gs:q.val-p.val}).slice(0,gl?7:4).forEach(function(s){g+='<text x="'+(X(xv(s))+8)+'" y="'+(Y(yv(s))+4)+'" style="fill:var(--ink2)">'+e(s.code)+'</text>'})});
  $('sc').innerHTML=g;
- $('legend').innerHTML=VO.map(function(k){return '<span>'+dot(k)+e(V[k][0])+'</span>'}).join('')}
+ $('legend').innerHTML=VOo().map(function(k){return '<span>'+dot(k)+e(VD()[k][0])+'</span>'}).join('');
+ $('sch').textContent=gl?'Who is inflecting: revenue growth against acceleration':'Screen vs Street: value score against consensus target upside';
+ $('scd').textContent=gl?'Each dot is a stock. Right = faster revenue growth. Up = growth is speeding up against the last full year. Click a dot for the detail.':'Each dot is a stock. Right = cheaper on the screen. Up = more upside to the average broker target. Click a dot for the research.'}
 
-function sidelists(){var a=cur().filter(function(s){return s.verdict==='disagree'}).sort(function(p,q){return q.val-p.val}).slice(0,6);
- $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Value score '+s.val+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+', '+(s.nan||0)+' analysts) · target '+(s.up>0?'+':'')+f(s.up,1,'%')+(s.flags&&s.flags.length?' · <span class="flag">'+e(s.flags[0])+'</span>':'')+'</span></li>'}).join(''):'<li class="small">None in this market right now.</li>';
+
+function sidelists(){var a;
+ if(G()){a=cur().filter(function(s){return (s.gv==='inflect'||s.gv==='early')&&s.cont}).sort(function(p,q){return q.gs-p.gs}).slice(0,6);
+  $('dh').textContent='Inflecting but contested';$('dd').textContent='The numbers are improving while short sellers or brokers stay sceptical. This is where the biggest winners and the biggest blow-ups both come from.';
+  $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Growth score '+s.gs+' · revenue '+pc(s.rg)+', '+(s.ra>0?'+':'')+s.ra.toFixed(1)+'pp vs last year · short interest '+f(s.sh,1,'%')+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+')</span></li>'}).join(''):'<li class="small">None in this market right now.</li>'}
+ else{a=cur().filter(function(s){return s.verdict==='disagree'}).sort(function(p,q){return q.val-p.val}).slice(0,6);
+  $('dh').textContent='Where the screen and the Street disagree most';$('dd').textContent='Cheap on the screen, but brokers are bearish or see no upside. Either the market is missing something or it is a value trap.';
+  $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Value score '+s.val+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+', '+(s.nan||0)+' analysts) · target '+(s.up>0?'+':'')+f(s.up,1,'%')+(s.flags&&s.flags.length?' · <span class="flag">'+e(s.flags[0])+'</span>':'')+'</span></li>'}).join(''):'<li class="small">None in this market right now.</li>'}
+
  var p=[];cur().forEach(function(s){(s.subs||[]).forEach(function(x){p.push({s:s,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});
  var by={},g=[];p.forEach(function(o){var k=o.x.u;if(!by[k]){by[k]={x:o.x,ss:[]};g.push(by[k])}if(by[k].ss.indexOf(o.s)<0)by[k].ss.push(o.s)});
- g.forEach(function(o){o.ss.sort(function(a,b){return (a.verdict==='other')-(b.verdict==='other')||(b.val||0)-(a.val||0)})});p=g.slice(0,6);
- $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions '+o.ss.slice(0,6).map(function(s){return dot(s.verdict)+' <a href="#" data-go="'+e(s.y)+'" title="'+e(V[s.verdict][0])+'">'+e(s.code)+'</a>'}).join(' ')+(o.ss.length>6?' +'+(o.ss.length-6)+' more':'')+'</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
+ g.forEach(function(o){o.ss.sort(function(a,b){return (K(a)==='other')-(K(b)==='other')||(G()?(b.gs||0)-(a.gs||0):(b.val||0)-(a.val||0))})});p=g.slice(0,6);
+ $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions '+o.ss.slice(0,6).map(function(s){return dot(K(s))+' <a href="#" data-go="'+e(s.y)+'" title="'+e(VD()[K(s)][0])+'">'+e(s.code)+'</a>'}).join(' ')+(o.ss.length>6?' +'+(o.ss.length-6)+' more':'')+'</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
 
 function macro(){var p=[];(D.substacks||[]).forEach(function(f){if(f.tag==='macro'||f.tag==='thematic')(f.latest||[]).forEach(function(x){p.push({f:f,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});p=p.slice(0,5);
  $('macl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.f.name)+' · '+dstr(o.x.d)+'</span></li>'}).join(''):'<li class="small">No macro or thematic feeds readable in the last run.</li>'}
@@ -200,23 +226,46 @@ function factor(){var FA=D.factor||{},F=FA[st.m],SP=FA.spread,el=$('fac');if(!F)
  line('fch',F.series.map(function(p){return [p[0],p[1],p[2]]}),{base:0,fmt:function(y){return (y>0?'+':'')+y+'%'},xl:function(d,f){return f?ym(d):String(d).slice(0,4)},tip:function(p){return 'Value (HML) 12m: '+pc(p[1])+'<br>Market 12m: '+pc(p[2])},step:20});
  if(SP)line('fsp',SP.series,{base:SP.median,dash:1,baseLabel:'median '+SP.median.toFixed(2)+'x',fmt:function(y){return y.toFixed(1)+'x'},xl:function(d){return String(d)},tip:function(p){return 'Spread '+p[1].toFixed(2)+'x'},step:.5});
  ['fch','fsp'].forEach(function(i){var s=$(i);if(s){s.addEventListener('mousemove',lineHover);s.addEventListener('mouseleave',lineOut)}})}
-var COLS=[['code','Code','l'],['name','Company','l nm'],['val','Value score'],['fpe','Fwd P/E'],['eveb','EV/EBITDA'],['fcfy','FCF yield'],['pb','P/B'],['dy','Div yield'],['rec','Consensus'],['nan','Analysts'],['up','Target upside'],['net','Up / down 120d'],['sh','Short %'],['verdict','Screen vs Street','l'],['res','Research']];
-function sv(s,k){return k==='net'?(s.upg||0)-(s.dng||0):k==='res'?nres(s):k==='verdict'?VO.indexOf(s.verdict):s[k]}
-function table(){var a=shown();a.sort(function(p,q){var x=sv(p,st.sort),y=sv(q,st.sort);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*st.dir});
+function bar(v){return v==null?'<span class="small">n/a</span>':'<span class="bar"><i style="width:'+v+'%"></i></span>'+v}
+function ppv(v){return v==null?'<span class="small">n/a</span>':'<span class="'+(v>0?'pos':v<0?'neg':'')+'">'+(v>0?'+':'')+v.toFixed(1)+'pp</span>'}
+var RC={code:function(s){return '<b>'+e(s.code)+'</b>'},name:function(s){return e(s.name)+(s.stale?' <span class="small">(stale)</span>':'')},val:function(s){return bar(s.val)},gs:function(s){return bar(s.gs)},
+ fpe:function(s){return f(s.fpe,1,'x')},eveb:function(s){return f(s.eveb,1,'x')},fcfy:function(s){return f(s.fcfy,1,'%')},pb:function(s){return f(s.pb,1,'x')},dy:function(s){return f(s.dy,1,'%')},
+ rec:function(s){return s.rec==null?'<span class="small">n/a</span>':recL(s.rec)+' <span class="small">'+s.rec.toFixed(2)+'</span>'},nan:function(s){return s.nan||'<span class="small">0</span>'},up:function(s){return sg(s.up,1,'%')},
+ net:function(s){return (s.upg||s.dng)?'<span class="pos">'+(s.upg||0)+'</span> / <span class="neg">'+(s.dng||0)+'</span>':'<span class="small">none</span>'},sh:function(s){return f(s.sh,1,'%')},
+ verdict:function(s){return '<span class="chip">'+dot(K(s))+e(VD()[K(s)][0])+'</span>'+(G()&&s.cont?' <span class="chip">Contested</span>':'')},res:function(s){return nres(s)||'<span class="small">links</span>'},
+ rg:function(s){return sg(s.rg,1,'%')},ra:function(s){return ppv(s.ra)},gm:function(s){return f(s.gm,0,'%')},om:function(s){return f(s.om,0,'%')},fm:function(s){return f(s.fm,0,'%')},r40:function(s){return f(s.r40,0)},
+ er:function(s){return sg(s.er,1,'%')},y1:function(s){return sg(s.y1,0,'%')},h52:function(s){return f(s.h52,0,'%')},mcap:function(s){return cap(s)},shr:function(s){return f(s.shr,1,'%')},sgn:function(s){return ppv(s.sg)},
+ like:function(s){return s.like?e(s.like):'<span class="small">n/a</span>'}};
+function cols(){return G()?[['code','Code','l'],['name','Company','l nm'],['gs','Growth score'],['rg','Rev growth'],['ra','Acceleration'],['gm','Gross margin'],['om','Op margin'],['fm','FCF margin'],['r40','Rule of 40'],['er','EPS est. 90d'],['y1','1y price'],['h52','vs 52w high'],['mcap','Mkt cap'],['shr','Share of peer revenue'],['sgn','Share gain'],['like','Share-gain odds','l'],['verdict','Read','l'],['res','Research']]
+ :[['code','Code','l'],['name','Company','l nm'],['val','Value score'],['fpe','Fwd P/E'],['eveb','EV/EBITDA'],['fcfy','FCF yield'],['pb','P/B'],['dy','Div yield'],['rec','Consensus'],['nan','Analysts'],['up','Target upside'],['net','Up / down 120d'],['sh','Short %'],['verdict','Screen vs Street','l'],['res','Research']]}
+var LK={High:3,Medium:2,Low:1};
+function sv(s,k){return k==='net'?(s.upg||0)-(s.dng||0):k==='res'?nres(s):k==='verdict'?VOo().indexOf(K(s)):k==='sgn'?s.sg:k==='like'?LK[s.like]:s[k]}
+function table(){var a=shown(),COLS=cols();a.sort(function(p,q){var x=sv(p,st.sort),y=sv(q,st.sort);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*st.dir});
  $('cnt').textContent=a.length+' of '+cur().length+' stocks';
  $('tb').tHead.innerHTML='<tr>'+COLS.map(function(c){return '<th class="'+(c[2]||'')+'" data-k="'+c[0]+'">'+c[1]+(st.sort===c[0]?(st.dir<0?' ▼':' ▲'):'')+'</th>'}).join('')+'</tr>';
  var h='';a.forEach(function(s){var o=st.open===s.y;
-  h+='<tr class="row'+(o?' open':'')+'" data-y="'+e(s.y)+'"><td class="l"><b>'+e(s.code)+'</b></td><td class="l nm" title="'+e(s.name)+'">'+e(s.name)+(s.stale?' <span class="small">(stale)</span>':'')+'</td>'+
-  '<td>'+(s.val==null?'<span class="small">n/a</span>':'<span class="bar"><i style="width:'+s.val+'%"></i></span>'+s.val)+'</td><td>'+f(s.fpe,1,'x')+'</td><td>'+f(s.eveb,1,'x')+'</td><td>'+f(s.fcfy,1,'%')+'</td><td>'+f(s.pb,1,'x')+'</td><td>'+f(s.dy,1,'%')+'</td>'+
-  '<td>'+(s.rec==null?'<span class="small">n/a</span>':recL(s.rec)+' <span class="small">'+s.rec.toFixed(2)+'</span>')+'</td><td>'+(s.nan||'<span class="small">0</span>')+'</td><td>'+sg(s.up,1,'%')+'</td><td>'+((s.upg||s.dng)?'<span class="pos">'+(s.upg||0)+'</span> / <span class="neg">'+(s.dng||0)+'</span>':'<span class="small">none</span>')+'</td><td>'+f(s.sh,1,'%')+'</td>'+
-  '<td class="l"><span class="chip">'+dot(s.verdict)+e(V[s.verdict][0])+'</span></td><td>'+(nres(s)||'<span class="small">links</span>')+'</td></tr>';
+  h+='<tr class="row'+(o?' open':'')+'" data-y="'+e(s.y)+'">'+COLS.map(function(c){return '<td class="'+(c[2]||'')+'"'+(c[0]==='name'?' title="'+e(s.name)+'"':'')+'>'+RC[c[0]](s)+'</td>'}).join('')+'</tr>';
   if(o)h+='<tr class="detail"><td colspan="'+COLS.length+'">'+detail(s)+'</td></tr>'});
  $('tb').tBodies[0].innerHTML=h||'<tr><td colspan="'+COLS.length+'" class="l small">No stocks match the filters.</td></tr>'}
+function money(v,s){var c=s.cur==='AUD'?'A$':'US$';return v==null?'n/a':c+(v>=1e12?(v/1e12).toFixed(2)+'tn':v>=1e9?(v/1e9).toFixed(1)+'bn':(v/1e6).toFixed(0)+'m')}
+function gdetail(s){var p=s.gp||{},pr=function(k){return p[k]==null?'not used':'better than '+p[k]+'% of the universe'};
+ var M=[['Revenue growth and acceleration',pc0(s.rg)+' yoy, '+(s.ra==null?'n/a':(s.ra>0?'+':'')+s.ra.toFixed(1)+'pp vs last full year'),pr('g'),30],['Margins',(s.gm==null?'n/a':s.gm.toFixed(0)+'% gross')+', '+(s.om==null?'n/a':s.om.toFixed(0)+'% operating')+', '+(s.fm==null?'n/a':s.fm.toFixed(0)+'% FCF'),pr('m'),20],['Analyst estimate revisions',(s.er==null?'n/a':(s.er>0?'+':'')+s.er.toFixed(1)+'% EPS in 90 days')+', '+(s.rg1==null?'n/a':(s.rg1>0?'+':'')+s.rg1.toFixed(0)+'% revenue next year'),pr('r'),20],['Price strength',(s.y1==null?'n/a':(s.y1>0?'+':'')+s.y1.toFixed(0)+'% in a year')+', '+(s.h52==null?'n/a':s.h52.toFixed(0)+'% from 52-week high'),pr('p'),15],['Share gain vs industry peers',s.sg==null?'n/a':(s.sg>0?'+':'')+s.sg.toFixed(1)+'pp faster than peers',pr('s'),10],['Size (smaller scores higher)',cap(s),pr('z'),5]];
+ var fl=[];if(s.qq&&Math.max.apply(null,s.qq)>40)fl.push('One quarter jumped '+Math.max.apply(null,s.qq).toFixed(0)+'% on the quarter before: check whether the growth is an acquisition, not organic');
+ if(s.fm!=null&&s.fm<-20)fl.push('Burning cash: free cash flow margin '+s.fm.toFixed(0)+'%');if(s.rev!=null&&s.rev<1e8)fl.push('Very small revenue base ('+money(s.rev,s)+'): percentages exaggerate');
+ if(s.cont)fl.push('Contested: short interest '+(s.sh==null?'n/a':s.sh.toFixed(1)+'%')+', consensus '+recL(s.rec)+(s.rec==null?'':' ('+s.rec.toFixed(2)+')'));if(s.h52!=null&&s.h52<-35)fl.push('Share price is '+(-s.h52).toFixed(0)+'% below its 52-week high');
+ var h='<div><h3>Growth: why it scores '+(s.gs==null?'n/a':s.gs)+'</h3><div class="kv">'+M.map(function(m){return '<span>'+m[0]+' <small>('+m[3]+'%)</small></span><span>'+m[1]+'</span><span>'+m[2]+'</span>'}).join('')+'</div>'+
+ (s.qq?'<p class="small">Revenue, quarter on quarter (oldest to latest): '+s.qq.map(function(x){return (x>0?'+':'')+x.toFixed(1)+'%'}).join(' → ')+'. Rule of 40 (revenue growth + FCF margin): '+(s.r40==null?'n/a':s.r40)+'.</p>':'')+
+ (fl.length?'<ul>'+fl.map(function(x){return '<li class="flag">⚠ '+e(x)+'</li>'}).join('')+'</ul>':'')+
+ '<h3 style="margin-top:10px">Market size and odds of taking share</h3>'+(s.pool?'<p style="font-size:13px;margin:0 0 6px">Industry: <b>'+e(s.ind)+'</b>. The '+s.pn+' listed peers in this universe turn over '+money(s.pool,s)+' a year; '+e(s.name)+' has '+s.shr.toFixed(1)+'% of that'+(s.sg==null?'.':' and is growing '+pc0(s.rg)+' against '+pc0(s.ig)+' for the group, a gap of '+(s.sg>0?'+':'')+s.sg.toFixed(1)+'pp.')+'</p><p style="font-size:13px;margin:0 0 6px">Odds of taking share: <b>'+e(s.like||'n/a')+'</b>'+(s.lpts!=null?' ('+s.lpts+' of 6 signals: growth gap, starting share under 10%, gross margin at or above the peer median'+(s.gmm!=null?' of '+s.gmm.toFixed(0)+'%':'')+', estimates rising, growth accelerating)':'')+'.</p>':'<p class="small">'+(s.ind?'Industry: '+e(s.ind)+'. ':'')+'Fewer than three listed peers in this universe, so no peer comparison.</p>')+
+ '<p class="small">This is a proxy, not a market-size estimate: it only counts listed companies in these indices, so private and overseas competitors and markets that do not exist yet are missing. A small share of a large pool means room to run; it does not prove the company can take it.</p>'+
+ '<p><a class="btn" href="https://www.google.com/search?q='+encodeURIComponent('"'+s.name+'" total addressable market size market share')+'" target="_blank" rel="noopener">Search market size</a></p></div>';return h}
+function pc0(v){return v==null?'n/a':(v>0?'+':'')+Number(v).toFixed(1)+'%'}
 
 function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f(s.fpe,1,'x P/E'):'n/a',30],['ev','EV/EBITDA',f(s.eveb,1,'x'),25],['fc','Free cash flow yield',f(s.fcfy,1,'%'),20],['bk','Price to book',f(s.pb,2,'x'),15],['dv','Dividend yield',f(s.dy,2,'%'),10]];
+ if(G()){var h='<div class="dg">'+gdetail(s)}else{
  var h='<div class="dg"><div><h3>Screen: why it scores '+(s.val==null?'n/a':s.val)+'</h3><div class="kv">'+M.map(function(m){return '<span>'+m[1]+'</span><span>'+m[2]+'</span><span>'+(p[m[0]]==null?'not used':'cheaper than '+p[m[0]]+'% of peers')+'</span>'}).join('')+'</div>'+
  '<p class="small">'+e(s.sector)+' · '+cap(s)+' · price '+f(s.px,2)+' '+e(s.cur||'')+' · 1y '+sg(s.y1,0,'%')+' · vs 200d '+sg(s.d200,0,'%')+' · ROE '+f(s.roe,0,'%')+' · debt/equity '+f(s.de,0,'%')+' · short interest '+f(s.sh,1,'%')+(s.shc!=null?' ('+(s.shc>0?'+':'')+s.shc.toFixed(1)+'pp in a month)':'')+'</p>'+
- (s.flags&&s.flags.length?'<ul>'+s.flags.map(function(x){return '<li class="flag">⚠ '+e(x)+'</li>'}).join('')+'</ul>':'<p class="small">No value-trap flags.</p>')+'</div>';
+ (s.flags&&s.flags.length?'<ul>'+s.flags.map(function(x){return '<li class="flag">⚠ '+e(x)+'</li>'}).join('')+'</ul>':'<p class="small">No value-trap flags.</p>')+'</div>';}
  h+='<div><h3>Street: broker consensus</h3>';
  if(s.rec!=null){h+='<div><b>'+recL(s.rec)+'</b> ('+s.rec.toFixed(2)+' on 1 = strong buy to 5 = sell) from '+(s.nan||0)+' analysts</div>';
   if(s.dist){var tot=s.dist.reduce(function(a,b){return a+b},0)||1,cs=['--c-agree','--c-agree','--c-other','--c-disagree','--c-disagree'],op=[1,.6,1,.6,1],nm=['Strong buy','Buy','Hold','Sell','Strong sell'];
@@ -231,29 +280,34 @@ function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f
  h+='<p><a class="btn" href="'+xq(s)+'" target="_blank" rel="noopener">Search X for research</a> <a class="btn" href="'+ssq(s)+'" target="_blank" rel="noopener">Search Substack</a> <a class="btn" href="https://finance.yahoo.com/quote/'+encodeURIComponent(s.y)+'/analysis" target="_blank" rel="noopener">Yahoo analysis</a></p></div></div>';return h}
 
 function filters(){var a=cur(),secs={};a.forEach(function(s){secs[s.sector]=1});
- $('fv').innerHTML='<option value="">All verdicts</option>'+VO.map(function(k){return '<option value="'+k+'"'+(st.v===k?' selected':'')+'>'+V[k][0]+'</option>'}).join('');
+ $('fv').innerHTML='<option value="">All verdicts</option>'+VOo().map(function(k){return '<option value="'+k+'"'+(st.v===k?' selected':'')+'>'+VD()[k][0]+'</option>'}).join('');
  $('fs').innerHTML='<option value="">All sectors</option>'+Object.keys(secs).sort().map(function(k){return '<option'+(st.s===k?' selected':'')+'>'+e(k)+'</option>'}).join('')}
-function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.m===st.m)});tiles();filters();scatter();sidelists();macro();factor();table()}
+function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.lens?t.dataset.lens===st.lens:t.dataset.m===st.m)});
+ $('lensd').textContent=G()?'Looks for companies whose growth is strong and speeding up, with high margins, rising analyst estimates, a rising share price and room to take share. Valuation is deliberately ignored here; use the value lens for that.':'Looks for stocks that are cheap against their sector, then checks whether published research agrees.';
+ tiles();filters();scatter();sidelists();macro();if(G())$('fac').style.display='none';else factor();table()}
 function go(y){var s=S.filter(function(x){return x.y===y})[0];if(!s)return;st.v='';st.s='';st.q='';st.r=false;$('fq').value='';$('fr').checked=false;st.open=y;filters();scatter();table();var r=document.querySelector('tr.row.open');if(r)r.scrollIntoView({behavior:'smooth',block:'start'})}
 
 document.addEventListener('click',function(ev){var t=ev.target,x;
- if(x=t.closest('.tab')){st.m=x.dataset.m;st.open=null;st.s='';try{history.replaceState(null,'','#'+st.m)}catch(e){}all();return}
+ if(x=t.closest('.tab')){if(x.dataset.lens){st.lens=x.dataset.lens;st.sort=G()?'gs':'val';st.dir=-1;st.v=''}else{st.m=x.dataset.m;st.s=''}st.open=null;try{history.replaceState(null,'','#'+st.lens+'-'+st.m)}catch(e){}all();return}
  if(x=t.closest('[data-go]')){ev.preventDefault();go(x.dataset.go);return}
  if(x=t.closest('circle[data-y]')){go(x.dataset.y);return}
- if(x=t.closest('th[data-k]')){var k=x.dataset.k;if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=(k==='code'||k==='name'||k==='fpe'||k==='eveb'||k==='pb'||k==='rec'||k==='verdict')?1:-1}table();return}
+ if(x=t.closest('th[data-k]')){var k=x.dataset.k;if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=(k==='code'||k==='name'||k==='fpe'||k==='eveb'||k==='pb'||k==='rec'||k==='verdict'||k==='shr')?1:-1}table();return}
  if(t.closest('a,.btn'))return;
  if(x=t.closest('tr.row')){st.open=st.open===x.dataset.y?null:x.dataset.y;table()}});
 $('fv').onchange=function(){st.v=this.value;scatter();table()};$('fs').onchange=function(){st.s=this.value;scatter();table()};
 $('fq').oninput=function(){st.q=this.value;scatter();table()};$('fr').onchange=function(){st.r=this.checked;scatter();table()};
 var tip=$('tip');$('sc').addEventListener('mousemove',function(ev){var c=ev.target.closest('circle[data-y]');if(!c){tip.style.display='none';return}
- var s=S.filter(function(x){return x.y===c.dataset.y})[0];tip.innerHTML='<b>'+e(s.code)+'</b> '+e(s.name)+'<br>'+dot(s.verdict)+' '+e(V[s.verdict][0])+'<br>Value score '+s.val+' · fwd P/E '+f(s.fpe,1,'x')+'<br>Consensus '+recL(s.rec)+' · '+(s.nan||0)+' analysts<br>Target upside '+(s.up>0?'+':'')+f(s.up,1,'%');
+ var s=S.filter(function(x){return x.y===c.dataset.y})[0];tip.innerHTML='<b>'+e(s.code)+'</b> '+e(s.name)+'<br>'+dot(K(s))+' '+e(VD()[K(s)][0])+(G()?'<br>Growth score '+s.gs+'<br>Revenue '+pc0(s.rg)+' yoy, '+(s.ra>0?'+':'')+s.ra.toFixed(1)+'pp vs last year<br>Gross margin '+f(s.gm,0,'%')+' · operating '+f(s.om,0,'%')+'<br>Share-gain odds: '+e(s.like||'n/a'):'<br>Value score '+s.val+' · fwd P/E '+f(s.fpe,1,'x')+'<br>Consensus '+recL(s.rec)+' · '+(s.nan||0)+' analysts<br>Target upside '+(s.up>0?'+':'')+f(s.up,1,'%'));
  tip.style.display='block';var w=tip.offsetWidth;tip.style.left=Math.min(ev.clientX+14,innerWidth-w-8)+'px';tip.style.top=(ev.clientY+14)+'px'});
 $('sc').addEventListener('mouseleave',function(){tip.style.display='none'});
 
 var g=D.generated_at?new Date(D.generated_at):null;$('gen').textContent=g?'Data as of '+g.toLocaleString('en-AU',{dateStyle:'medium',timeStyle:'short'}):'No data yet';
 if(D.refresh_url){$('refresh').href=D.refresh_url;$('refresh').style.display='inline-block'}
 var ss=D.substacks||[];
-$('method').innerHTML='<p><b>Value score (0 to 100).</b> Each stock is ranked against its own GICS sector within its index (against the whole index where the sector has fewer than 8 names) on five measures, then blended: forward earnings yield 30%, EV/EBITDA 25%, free cash flow yield 20%, price to book 15%, dividend yield 10%. Missing measures are dropped and the weights rescaled; at least three are needed. 70+ counts as cheap, 30 or less as expensive.</p>'+
+$('method').innerHTML='<p><b>Growth inflection score (0 to 100).</b> Each stock is ranked against every other stock in its region (US = S&amp;P 500 plus S&amp;P MidCap 400; Australia = ASX 200), not against its sector, on six groups: revenue growth and acceleration 30% (latest quarter against a year ago, and that rate minus the last full-year growth rate); margins 20% (gross margin, and the Rule of 40 = revenue growth plus free cash flow margin); analyst estimate revisions 20% (change in next-year EPS estimate over 90 days, and forecast revenue growth); price strength 15% (one-year return and distance from the 52-week high); share gain 10% (revenue growth minus the revenue-weighted growth of listed peers in the same Yahoo industry); size 5% (smaller scores higher). 75+ with positive acceleration = inflecting. Valuation is not in this score.</p>'+
+'<p><b>Gross, operating and free cash flow margin.</b> Gross margin = (revenue minus the direct cost of delivering the product) / revenue: how much each sale is worth before overheads. Operating margin = operating profit / revenue, after also paying for R&amp;D, sales and marketing, and administration: whether the whole business makes money. FCF margin = (operating cash flow minus capital expenditure) / revenue: the cash actually left over. A young winner typically shows a high gross margin first, then operating and FCF margins rising as revenue outgrows overheads.</p>'+
+'<p><b>Market size and odds of taking share.</b> The page compares each company with listed peers in the same industry inside this universe: its share of their combined revenue and how much faster it is growing than they are. The odds rating counts six signals (growth gap of 3pp, and of 10pp; starting share under 10%; gross margin at or above the peer median; estimates rising; growth accelerating): 5+ = High, 3 to 4 = Medium, otherwise or losing share = Low. It is a rule of thumb from reported numbers, not a forecast, and not a true total-addressable-market figure.</p>'+
+'<p><b>Value score (0 to 100).</b> Each stock is ranked against its own GICS sector within its index (against the whole index where the sector has fewer than 8 names) on five measures, then blended: forward earnings yield 30%, EV/EBITDA 25%, free cash flow yield 20%, price to book 15%, dividend yield 10%. Missing measures are dropped and the weights rescaled; at least three are needed. 70+ counts as cheap, 30 or less as expensive.</p>'+
 '<p><b>Street view.</b> Bullish = consensus rating 2.2 or better (1 = strong buy, 5 = sell) and 10%+ upside to the mean target; bearish = rating 2.8 or worse, or no upside; otherwise neutral. Fewer than 3 analysts = thin coverage.</p>'+
 '<p><b>Value-trap flags.</b> Forward EPS below trailing, ROE under 5%, debt/equity over 200% (ex financials and real estate), price more than 15% under its 200-day average, net broker downgrades in 120 days, short interest of 5%+ (ASX) or 8%+ of float (S&amp;P 500).</p>'+
 '<p><b>Short interest.</b> ASX: ASIC daily aggregated short positions as a share of shares on issue'+(D.short_date?' (report dated '+e(D.short_date)+'; ASIC publishes about four trading days in arrears)':'')+', with the change over about 20 trading days. S&amp;P 500: short interest as a share of float from Yahoo (exchange data, twice a month). A cheap stock with heavy or rising shorts is one where professional money is betting the screen is wrong.</p>'+

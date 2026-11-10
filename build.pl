@@ -43,11 +43,24 @@ sub scan_feeds { my ($stocks, $cache) = @_;
     for my $ua ($UA, 'curl/8') { $x = `curl -sS -L --compressed --max-time 30 -A '$ua' -H 'Accept: application/rss+xml, application/xml, text/xml' -w ' HTTPCODE=%{http_code}' '$f->{feed}' 2>/dev/null` // ''; ($code) = $x =~ /HTTPCODE=(\d+)\s*$/; last if $x =~ /<item>/; sleep 1; }
     utf8::decode($x); my @items; my $src = 'live';
     while ($x =~ m{<item>(.*?)</item>}gs) { my $i = $1;
-      my %g; for my $tag (qw(title description link pubDate content:encoded)) { my ($v) = $i =~ m{<\Q$tag\E[^>]*>(.*?)</\Q$tag\E>}s; $v //= ''; $v =~ s/^\s*<!\[CDATA\[|\]\]>\s*$//g; $g{$tag} = $v; }
+      (my $meta = $i) =~ s{<content:encoded.*?</content:encoded>}{}s; $meta =~ s{<description.*?</description>}{<description/>}s if length($meta) > 20000;
+      my %g; for my $tag (qw(title description link pubDate content:encoded)) { my ($v) = ($tag eq 'content:encoded' ? $i : $meta) =~ m{<\Q$tag\E(?:\s[^>]*)?>(.*?)</\Q$tag\E>}s; $v //= ''; $v =~ s/^\s*<!\[CDATA\[|\]\]>\s*$//g; $g{$tag} = $v; }
+      $g{title} =~ s/<[^>]+>//g; $g{title} = substr($g{title}, 0, 240); $g{pubDate} = substr($g{pubDate}, 0, 40);
+      if ($g{link} !~ m{^https?://[^\s<>"]+$}) { my ($gu) = $meta =~ m{<guid[^>]*>\s*(?:<!\[CDATA\[)?\s*(https?://[^\s<>"\]]+)}; $g{link} = $gu // $f->{url}; }
       my $head = "$g{title} . $g{description}"; (my $body = $g{'content:encoded'}) =~ s/<[^>]+>/ /g;
       for ($head, $body, $g{title}) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; s/&#8217;|&#039;|&#39;/'/g; s/&#8211;/-/g; s/&quot;/"/g; }
       my @h; for my $p (@pat) { my ($y, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next; push @h, [$y, $where]; }
       push @items, { t => $g{title}, u => $g{link}, d => $g{pubDate}, h => \@h };
+    }
+    if (!@items) {   # relay: rss2json.com fetches the feed from its own servers (latest 10 posts)
+      my $r = js(`curl -sS -L --max-time 40 'https://api.rss2json.com/v1/api.json?rss_url=@{[esc($f->{feed})]}' 2>/dev/null` // '');
+      if ($r && ($r->{status} // '') eq 'ok') {
+        for my $it (@{$r->{items} // []}) { my $head = ($it->{title} // '').' . '.($it->{description} // ''); (my $body = $it->{content} // '') =~ s/<[^>]+>/ /g; $head =~ s/<[^>]+>/ /g;
+          for ($head, $body) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; }
+          my @h; for my $p (@pat) { my ($y, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next; push @h, [$y, $where]; }
+          push @items, { t => $it->{title}, u => $it->{link}, d => $it->{pubDate}, h => \@h }; }
+        $src = 'relay' if @items; }
+      sleep 1.2;
     }
     if (!@items) { $codes{$code // 'none'}++; if ($cache && $cache->{feeds}{$f->{feed}}) { my $c = $cache->{feeds}{$f->{feed}}; @items = @{$c->{items} // []}; $src = "saved copy $c->{fetched}"; } else { $src = 'unreadable' } }
     my $nh = 0; for my $it (@items) { for my $hit (@{$it->{h} // []}) { push @{$hits{$hit->[0]}}, { t => $it->{t}, u => $it->{u}, d => $it->{d}, s => $f->{name}, w => $hit->[1], k => ($f->{tag} // 'value') }; $nh++; } }
@@ -70,6 +83,18 @@ my @uni;
     push @uni, { m => 'SPX', code => $f[0], y => $y, name => $f[1], sector => $f[2] };
   }
   my $sp = grep { $_->{m} eq 'SPX' } @uni;
+  my %in500 = map { $_->{code} => 1 } @uni;
+  my $w4 = curl('https://en.wikipedia.org/w/index.php?title=List_of_S%26P_400_companies&action=raw'); utf8::decode($w4);
+  if ($w4 =~ /id="constituents"(.*?)\n\|\}/s) {
+    for my $row (split /\n\|-/, $1) {
+      my @c = map { s/^\|\s*//; s/^style="[^"]*"\s*\|\s*//; $_ } grep { /^\|/ } split /\n/, $row;
+      next unless @c >= 3 && $c[0] =~ /\{\{\w+\|([A-Z.]+)\}\}/; my $code = $1; next if $in500{$code}; (my $y = $code) =~ s/\./-/;
+      my $nm = $c[1]; $nm =~ s/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/$1/g; $nm =~ s/<[^>]*>|\{\{[^}]*\}\}//g; $nm =~ s/^\s+|\s+$//g; (my $sec = $c[2]) =~ s/^\s+|\s+$//g;
+      push @uni, { m => 'MID', code => $code, y => $y, name => $nm, sector => $sec };
+    }
+  }
+  my $md = grep { $_->{m} eq 'MID' } @uni;
+
   my $wt = curl('https://en.wikipedia.org/w/index.php?title=S%26P/ASX_200&action=raw');
   utf8::decode($wt);
   if ($wt =~ /\{\|\s*class="wikitable sortable"\s*\n!\s*Code(.*?)\n\|\}/s) {
@@ -83,11 +108,11 @@ my @uni;
     }
   }
   my $ax = grep { $_->{m} eq 'ASX' } @uni;
-  note("universe: S&P 500 $sp, ASX 200 $ax");
-  if ($sp < 400 || $ax < 150) {
-    my $fb = js(slurp('data/universe.json'));
-    if ($fb) { my %have = map { $_->{m} => 1 } ($sp >= 400 ? grep { $_->{m} eq 'SPX' } @uni : ()), ($ax >= 150 ? grep { $_->{m} eq 'ASX' } @uni : ());
-      @uni = ((grep { $have{$_->{m}} } @uni), (grep { !$have{$_->{m}} } @$fb)); note("universe fallback used: now ".scalar(@uni)); }
+  note("universe: S&P 500 $sp, S&P MidCap 400 $md, ASX 200 $ax");
+  my %okm = (SPX => $sp >= 400, MID => $md >= 300, ASX => $ax >= 150);
+  if (grep { !$_ } values %okm) {
+    my $fb = js(slurp('data/universe.json')) // [];
+    @uni = ((grep { $okm{$_->{m}} } @uni), (grep { !$okm{$_->{m}} } @$fb)); note("universe fallback used: now ".scalar(@uni));
   } else { make_path('data'); open my $h, '>:raw', 'data/universe.json'; print $h JSON::PP->new->utf8(1)->canonical(1)->encode(\@uni); close $h; }
 }
 if ($o{limit}) { my %n; @uni = grep { ++$n{$_->{m}} <= $o{limit} } @uni; }
@@ -126,7 +151,7 @@ for my $u (@uni) {
   last unless $crumb; my $y = $u->{y}; next unless $q{$y};
   my $got;
   for my $try (0..2) {
-    my $b = curl("https://query2.finance.yahoo.com/v10/finance/quoteSummary/$y?modules=financialData,defaultKeyStatistics,upgradeDowngradeHistory,recommendationTrend&crumb=".esc($crumb), '-b', $JAR);
+    my $b = curl("https://query2.finance.yahoo.com/v10/finance/quoteSummary/$y?modules=financialData,defaultKeyStatistics,upgradeDowngradeHistory,recommendationTrend,earnings,earningsTrend,assetProfile&crumb=".esc($crumb), '-b', $JAR);
     my $r = js($b);
     if ($r && $r->{quoteSummary}{result}) { $got = $r->{quoteSummary}{result}[0]; last }
     last if $r && $r->{quoteSummary}{error} && ($r->{quoteSummary}{error}{code} // '') eq 'Not Found';
@@ -161,6 +186,20 @@ for my $u (@uni) {
     tmean => r2(num($f->{targetMeanPrice}), 2), thi => r2(num($f->{targetHighPrice}), 2), tlo => r2(num($f->{targetLowPrice}), 2));
   if ($u->{m} eq 'SPX') { my ($sp, $ss, $pm) = (num($k->{shortPercentOfFloat}), num($k->{sharesShort}), num($k->{sharesShortPriorMonth})); if (defined $sp) { $s{sh} = r2($sp * 100, 1); $s{shc} = r2($sp * 100 * (1 - $pm / $ss), 1) if $ss && defined $pm; } }
   $s{up} = r2(($s{tmean} / $px - 1) * 100, 1) if $s{tmean};
+  { my $e = $d->{earnings}{financialsChart} // {}; my @yr = map { num($_->{revenue}) } @{$e->{yearly} // []}; my @qr = map { num($_->{revenue}) } @{$e->{quarterly} // []};
+    my $rg = num($f->{revenueGrowth}); $s{rg} = r2($rg * 100, 1) if defined $rg;
+    if (@yr >= 2 && defined $yr[-1] && $yr[-2] && $yr[-2] > 0) { $s{rgp} = r2(($yr[-1] / $yr[-2] - 1) * 100, 1); $s{ra} = r2($s{rg} - $s{rgp}, 1) if defined $s{rg}; }
+    $s{qq} = [map { r2(($qr[$_] / $qr[$_ - 1] - 1) * 100, 1) } 1 .. $#qr] if @qr >= 3 && !grep { !defined $_ || $_ <= 0 } @qr;
+    my ($gm, $om) = (num($f->{grossMargins}), num($f->{operatingMargins})); $s{gm} = r2($gm * 100, 1) if defined $gm && $gm != 0; $s{om} = r2($om * 100, 1) if defined $om && $om != 0;
+    my $rev = num($f->{totalRevenue}); if (defined $rev && $rev > 0) { $s{rev} = $rev * $conv if $conv; $s{fm} = r2($fcf / $rev * 100, 1) if defined $fcf; }
+    $s{r40} = r2($s{rg} + $s{fm}, 0) if defined $s{rg} && defined $s{fm};
+    my %tr = map { ($_->{period} // '') => $_ } @{$d->{earningsTrend}{trend} // []};
+    for my $t ($tr{'+1y'}, $tr{'0y'}) { next unless $t; my ($c, $o) = (num($t->{epsTrend}{current}), num($t->{epsTrend}{'90daysAgo'})); if (defined $c && defined $o && $o > 0 && $c > 0) { $s{er} = r2(($c / $o - 1) * 100, 1); last } }
+    my $g1 = $tr{'+1y'} ? num($tr{'+1y'}{revenueEstimate}{growth}) : undef; $s{rg1} = r2($g1 * 100, 1) if defined $g1;
+    $s{ind} = $d->{assetProfile}{industry} if $d->{assetProfile}{industry};
+    my $hi = num($v->{fiftyTwoWeekHigh}); $s{h52} = r2(($px / $hi - 1) * 100, 1) if $hi;
+  }
+
   if (my $t = $d->{recommendationTrend}{trend}) { my ($t0) = grep { ($_->{period} // '') eq '0m' } @$t; $s{dist} = [map { $t0->{$_} // 0 } qw(strongBuy buy hold sell strongSell)] if $t0; }
   my @h = grep { ($_->{epochGradeDate} // 0) > $NOW - 120 * 86400 } @{$d->{upgradeDowngradeHistory}{history} // []};
   @h = sort { $b->{epochGradeDate} <=> $a->{epochGradeDate} } @h;
@@ -192,7 +231,7 @@ my @MET = ( ['ey', 30, sub { my $s = shift; defined $s->{fpe} && $s->{fpe} > 0 ?
             ['bk', 15, sub { my $s = shift; defined $s->{pb} && $s->{pb} > 0 ? 1 / $s->{pb} : undef }],
             ['dv', 10, sub { $_[0]{dy} // 0 }] );
 sub pct { my ($x, $arr) = @_; my $n = @$arr; return undef if $n < 2; my $lt = grep { $_ < $x } @$arr; my $eq = grep { $_ == $x } @$arr; return 100 * ($lt + 0.5 * ($eq - 1)) / ($n - 1 || 1) }
-for my $m (qw(SPX ASX)) {
+for my $m (qw(SPX MID ASX)) {
   my @ms = grep { $_->{m} eq $m && !$_->{stale} } @S;
   for my $met (@MET) { my ($key, $w, $fn) = @$met;
     my (%bysec, @all); for (@ms) { my $x = $fn->($_); next unless defined $x; push @all, $x; push @{$bysec{$_->{sector}}}, $x; }
@@ -218,9 +257,37 @@ for my $m (qw(SPX ASX)) {
   }
 }
 
+# ---------- 3b. growth inflection: who is accelerating, and is it taking share? ----------
+# Percentiles are across the whole region (US = S&P 500 + MidCap 400; Australia = ASX 200), not by sector.
+for my $reg ([qw(SPX MID)], ['ASX']) {
+  my %mk = map { $_ => 1 } @$reg; my @rs = grep { $mk{$_->{m}} && !$_->{stale} } @S;
+  my (%pool, %cnt, %wg, %gms);
+  for (@rs) { my $i = $_->{ind}; next unless $i && $_->{rev}; $pool{$i} += $_->{rev}; $cnt{$i}++; if (defined $_->{rg}) { $wg{$i}[0] += $_->{rev} * $_->{rg}; $wg{$i}[1] += $_->{rev} } push @{$gms{$i}}, $_->{gm} if defined $_->{gm}; }
+  for my $s (@rs) { my $i = $s->{ind}; next unless $i && $s->{rev} && $cnt{$i} >= 3;
+    $s->{pool} = $pool{$i}; $s->{pn} = $cnt{$i}; $s->{shr} = r2(100 * $s->{rev} / $pool{$i}, 1);
+    if (defined $s->{rg} && $wg{$i}[1]) { $s->{ig} = r2($wg{$i}[0] / $wg{$i}[1], 1); $s->{sg} = r2($s->{rg} - $s->{ig}, 1); }
+    my @g = sort { $a <=> $b } @{$gms{$i} // []}; $s->{gmm} = $g[int(@g / 2)] if @g >= 3;
+  }
+  my %fn = (rg => sub { $_[0]{rg} }, ra => sub { $_[0]{ra} }, gm => sub { $_[0]{gm} }, r40 => sub { $_[0]{r40} }, er => sub { $_[0]{er} }, rg1 => sub { $_[0]{rg1} },
+            y1 => sub { $_[0]{y1} }, h52 => sub { $_[0]{h52} }, sg => sub { $_[0]{sg} }, sz => sub { $_[0]{mcap} ? -log($_[0]{mcap}) : undef });
+  my %pp; for my $k (keys %fn) { my @all = grep { defined } map { $fn{$k}->($_) } @rs; for my $s (@rs) { my $x = $fn{$k}->($s); $pp{$k}{$s->{y}} = pct($x, \@all) if defined $x; } }
+  my @grp = (['g', 30, [qw(rg ra)]], ['m', 20, [qw(gm r40)]], ['r', 20, [qw(er rg1)]], ['p', 15, [qw(y1 h52)]], ['s', 10, ['sg']], ['z', 5, ['sz']]);
+  for my $s (@rs) {
+    my ($sw, $sx, $n) = (0, 0, 0); my %gp;
+    for my $g (@grp) { my @v = grep { defined } map { $pp{$_}{$s->{y}} } @{$g->[2]}; next unless @v; my $a = 0; $a += $_ for @v; $a /= @v; $gp{$g->[0]} = r2($a, 0); $sw += $g->[1]; $sx += $g->[1] * $a; $n++; }
+    $s->{gp} = \%gp; $s->{gs} = (defined $gp{g} && defined $s->{rg} && $n >= 4) ? r2($sx / $sw, 0) : undef;
+    # likelihood of taking share: a rule-based read, not a forecast
+    if (defined $s->{sg}) { my $pts = ($s->{sg} >= 10 ? 2 : $s->{sg} >= 3 ? 1 : 0) + (($s->{shr} // 100) < 10 ? 1 : 0) + ((defined $s->{gm} && defined $s->{gmm} && $s->{gm} >= $s->{gmm}) ? 1 : 0) + ((defined $s->{er} && $s->{er} > 0) ? 1 : 0) + ((defined $s->{ra} && $s->{ra} > 0) ? 1 : 0);
+      $s->{like} = $s->{sg} < 0 ? 'Low' : $pts >= 5 ? 'High' : $pts >= 3 ? 'Medium' : 'Low'; $s->{lpts} = $pts; }
+    $s->{cont} = ((defined $s->{sh} && $s->{sh} >= ($s->{m} eq 'ASX' ? 5 : 8)) || (defined $s->{rec} && $s->{rec} >= 2.6)) ? JSON::PP::true : JSON::PP::false;
+    my $g = $s->{gs}; $s->{gv} = !defined $g ? 'na' : $g >= 75 ? ((defined $s->{ra} && $s->{ra} > 0) ? 'inflect' : 'compound') : ($g >= 60 && defined $s->{ra} && $s->{ra} >= 5) ? 'early' : 'other';
+  }
+}
+
 # ---------- 4. published research headlines (Google News) and optional X posts ----------
 my (%news_for, $news_ok, $x_ok) = ((), 0, 0);
-my @focus; for my $m (qw(SPX ASX)) { my @c = sort { $b->{val} <=> $a->{val} } grep { $_->{m} eq $m && !$_->{stale} && defined $_->{val} && $_->{val} >= 70 } @S; push @focus, @c[0 .. ($#c < 24 ? $#c : 24)]; }
+my @focus; for my $m (qw(SPX MID ASX)) { my @c = sort { $b->{val} <=> $a->{val} } grep { $_->{m} eq $m && !$_->{stale} && defined $_->{val} && $_->{val} >= 70 } @S; push @focus, @c[0 .. ($#c < 24 ? $#c : 24)]; }
+{ my %inf = map { $_->{y} => 1 } @focus; for my $m (qw(SPX MID ASX)) { my @c = sort { $b->{gs} <=> $a->{gs} } grep { $_->{m} eq $m && !$_->{stale} && defined $_->{gs} && !$inf{$_->{y}} } @S; push @focus, @c[0 .. ($#c < 14 ? $#c : 14)]; } }
 for my $s (@focus) {
   (my $nm = $s->{name}) =~ s/\s+(Inc\.?|Corp\.?|Corporation|Limited|Ltd\.?|Group|Company|plc|Holdings?|\(.*?\))\s*$//i;
   my $qy = $s->{m} eq 'ASX' ? qq{"$nm" (ASX OR shares) (broker OR "price target" OR upgrade OR downgrade OR rating) when:30d} : qq{"$nm" $s->{code} ("price target" OR upgrade OR downgrade OR initiates OR analyst) when:30d};
@@ -238,9 +305,9 @@ my @subs_meta;
   my $cache = js(slurp('data/feeds.json'));
   my ($hits, $meta, $codes) = scan_feeds([grep { !$_->{stale} } @S], $cache);
   for my $s (@S) { my $x = $hits->{$s->{y}} or next; my %seen; my @x = grep { !$seen{$_->{u}}++ } sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @$x; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
-  my ($live, $saved, $nh) = (0, 0, 0); for (@$meta) { $live++ if $_->{src} eq 'live'; $saved++ if $_->{src} =~ /^saved/; $nh += $_->{hits}; delete $_->{items}; delete $_->{feed}; }
+  my ($live, $saved, $nh, $relay) = (0, 0, 0, 0); for (@$meta) { $live++ if $_->{src} eq 'live'; $relay++ if $_->{src} eq 'relay'; $saved++ if $_->{src} =~ /^saved/; $nh += $_->{hits}; delete $_->{items}; delete $_->{feed}; }
   @subs_meta = @$meta;
-  note("research feeds: ".scalar(@$meta)." tracked, $live read live, $saved from the saved copy".($cache ? " ($cache->{fetched})" : "").", ".(scalar(@$meta) - $live - $saved)." unreadable, $nh stock mentions".(%$codes ? "; live failures by HTTP status: ".join(', ', map { "$_ x$codes->{$_}" } sort keys %$codes) : ""));
+  note("research feeds: ".scalar(@$meta)." tracked, $live read live, $relay through the relay, $saved from the saved copy".($cache ? " ($cache->{fetched})" : "").", ".(scalar(@$meta) - $live - $saved - $relay)." unreadable, $nh stock mentions".(%$codes ? "; live failures by HTTP status: ".join(', ', map { "$_ x$codes->{$_}" } sort keys %$codes) : ""));
 }
 
 my $xtok = $ENV{X_BEARER_TOKEN} // '';
@@ -306,7 +373,7 @@ my $out = { generated_at => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime $NOW), refresh
 make_path($o{out});
 my $json = JSON::PP->new->utf8(1)->canonical(1)->encode($out);
 open my $h, '>:raw', "$o{out}/data.json" or die $!; print $h $json; close $h;
-my $tpl = slurp('template.html'); (my $inl = $json) =~ s{</}{<\\/}g;
+my $tpl = slurp('template.html'); (my $inl = $json) =~ s{<}{\\u003c}g;
 $tpl =~ s{(<script type="application/json" id="d-data">)(.*?)(</script>)}{$1$inl$3}s or die "template has no d-data block\n";
 open $h, '>:raw', "$o{out}/index.html" or die $!; print $h $tpl; close $h;
 note(sprintf "wrote %s/index.html (%.0f KB)", $o{out}, length($tpl) / 1024);
