@@ -63,6 +63,8 @@ tr.row:hover,tr.row.open{background:var(--sel)}
 .list li{padding:6px 0;border-bottom:1px solid var(--grid)}
 details{margin-top:12px}
 summary{cursor:pointer;color:var(--ink2)}
+.h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px;font-weight:600}
+#fac .tile{background:var(--page);border-radius:10px;padding:10px 12px}
 .foot{color:var(--muted);font-size:12px;margin-top:16px}
 </style>
 </head>
@@ -93,8 +95,11 @@ summary{cursor:pointer;color:var(--ink2)}
       <ul class="list" id="dis" style="list-style:none;padding:0;margin:8px 0 0"></ul>
       <h2 style="margin-top:14px">Latest independent research on screened stocks (Substack, short sellers, activists)</h2>
       <ul class="list" id="subl" style="list-style:none;padding:0;margin:0"></ul>
+      <h2 style="margin-top:14px">Macro and thematic reads</h2>
+      <ul class="list" id="macl" style="list-style:none;padding:0;margin:0"></ul>
     </div>
   </div>
+  <div class="card" id="fac" style="margin-bottom:12px"></div>
   <div class="card">
     <div class="filters">
       <select id="fv" aria-label="Verdict"></select>
@@ -159,6 +164,39 @@ function sidelists(){var a=cur().filter(function(s){return s.verdict==='disagree
  var seen={};p=p.filter(function(o){var k=o.x.u+o.s.y;if(seen[k])return false;seen[k]=1;return true}).slice(0,6);
  $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions <a href="#" data-go="'+e(o.s.y)+'">'+e(o.s.code)+'</a> ('+dot(o.s.verdict)+' '+e(V[o.s.verdict][0])+')</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
 
+function macro(){var p=[];(D.substacks||[]).forEach(function(f){if(f.tag==='macro'||f.tag==='thematic')(f.latest||[]).forEach(function(x){p.push({f:f,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});p=p.slice(0,5);
+ $('macl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.f.name)+' · '+dstr(o.x.d)+'</span></li>'}).join(''):'<li class="small">No macro or thematic feeds readable in the last run.</li>'}
+function ym(d){d=String(d);return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+d.slice(4,6)-1]+' '+d.slice(0,4)}
+var LC={};
+function line(id,pts,o){var W=640,H=220,L=44,R=12,T=10,B=24,v=pts.map(function(p){return p[1]}),lo=Math.min.apply(null,v.concat(o.base!=null?[o.base]:[])),hi=Math.max.apply(null,v.concat(o.base!=null?[o.base]:[]));
+ var pad=(hi-lo)*.08||1;lo-=pad;hi+=pad;function X(i){return L+(W-L-R)*i/(pts.length-1)}function Y(y){return T+(H-T-B)*(1-(y-lo)/(hi-lo))}
+ var step=o.step||Math.pow(10,Math.floor(Math.log10(hi-lo)))*((hi-lo)/Math.pow(10,Math.floor(Math.log10(hi-lo)))>5?2:(hi-lo)/Math.pow(10,Math.floor(Math.log10(hi-lo)))>2?1:.5),g='';
+ for(var y=Math.ceil(lo/step)*step;y<=hi;y+=step)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(y)+'" y2="'+Y(y)+'" stroke="var(--grid)"/><text x="'+(L-6)+'" y="'+(Y(y)+4)+'" text-anchor="end">'+o.fmt(y)+'</text>';
+ if(o.base!=null)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(o.base)+'" y2="'+Y(o.base)+'" stroke="var(--axis)" '+(o.dash?'stroke-dasharray="4 4"':'')+'/>'+(o.baseLabel?'<text x="'+(W-R)+'" y="'+(Y(o.base)-5)+'" text-anchor="end">'+o.baseLabel+'</text>':'');
+ var n=pts.length,k=Math.max(1,Math.round(n/6));for(var i=0;i<n;i+=k)g+='<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="middle">'+o.xl(pts[i][0])+'</text>';
+ g+='<path d="'+pts.map(function(p,i){return (i?'L':'M')+X(i).toFixed(1)+' '+Y(p[1]).toFixed(1)}).join('')+'" fill="none" stroke="var(--c-agree)" stroke-width="2" stroke-linejoin="round"/>';
+ g+='<circle cx="'+X(n-1)+'" cy="'+Y(v[n-1])+'" r="4" fill="var(--c-agree)" stroke="var(--surface)" stroke-width="2"/><g class="hv" style="display:none"><line y1="'+T+'" y2="'+(H-B)+'" stroke="var(--axis)"/><circle r="4" fill="var(--c-agree)" stroke="var(--surface)" stroke-width="2"/></g>';
+ var el=$(id);el.setAttribute('viewBox','0 0 '+W+' '+H);el.innerHTML=g;LC[id]={pts:pts,X:X,Y:Y,o:o,L:L,W:W,R:R}}
+function lineHover(ev){var el=ev.currentTarget,c=LC[el.id];if(!c)return;var r=el.getBoundingClientRect(),x=(ev.clientX-r.left)/r.width*c.W,i=Math.round((x-c.L)/(c.W-c.L-c.R)*(c.pts.length-1));i=Math.max(0,Math.min(c.pts.length-1,i));
+ var p=c.pts[i],h=el.querySelector('.hv');h.style.display='';h.firstChild.setAttribute('x1',c.X(i));h.firstChild.setAttribute('x2',c.X(i));h.lastChild.setAttribute('cx',c.X(i));h.lastChild.setAttribute('cy',c.Y(p[1]));
+ tip.innerHTML='<b>'+c.o.xl(p[0],1)+'</b><br>'+c.o.tip(p);tip.style.display='block';tip.style.left=Math.min(ev.clientX+14,innerWidth-tip.offsetWidth-8)+'px';tip.style.top=(ev.clientY+14)+'px'}
+function lineOut(ev){var h=ev.currentTarget.querySelector('.hv');if(h)h.style.display='none';tip.style.display='none'}
+function pc(v,d){return (v>0?'+':'')+Number(v).toFixed(d==null?1:d)+'%'}
+function factor(){var FA=D.factor||{},F=FA[st.m],SP=FA.spread,el=$('fac');if(!F){el.style.display='none';return}el.style.display='';
+ var up=F.updown,dn=up[2],u=up[1],hyp=dn[1]>u[1];
+ var h='<h2>Is value being rewarded? Ken French value factor (HML), '+e(F.label)+'</h2><div class="small" style="max-width:900px">HML = "high minus low": the return from owning the cheapest 30% of stocks by book-to-market and shorting the most expensive 30%. Above zero means cheap stocks beat expensive ones. Data to '+ym(F.to)+' (published about two months in arrears).'+(st.m==='ASX'?' French publishes no Australia-only series; this regional set is the closest proxy.':'')+'</div>'+
+ '<div class="tiles" style="margin:10px 0">'+[[pc(F.h12),'Value vs growth, last 12 months'],[pc(F.h3y)+' pa','Last 3 years'],[pc(F.h10y)+' pa','Last 10 years'],[pc(F.m12),'Market, last 12 months']].map(function(x){return '<div class="tile"><div class="n">'+x[0]+'</div><div class="l">'+x[1]+'</div></div>'}).join('')+'</div>'+
+ '<div class="grid2" style="margin:0"><div><h3 class="h3">Rolling 12-month value return (HML), since 2000</h3><svg id="fch" width="100%"></svg>'+
+ (SP?'<h3 class="h3" style="margin-top:12px">Value spread, US: how much cheaper cheap stocks are than expensive ones</h3><svg id="fsp" width="100%"></svg><div class="small">Book-to-market of the 70th percentile NYSE stock divided by the 30th percentile, set each June. Now '+SP.cur.toFixed(2)+'x ('+SP.year+') against a median of '+SP.median.toFixed(2)+'x since 1963: wider than '+SP.pct+'% of years. Caution: book value misses intangibles (software, brands), so this ratio has drifted wider over the decades and overstates how extreme today is.'+(st.m==='ASX'?' Shown for the US only; there is no published Asia Pacific equivalent.':'')+'</div>':'')+'</div>'+
+ '<div><h3 class="h3">Does value lose in bull runs and win in bear markets? Since '+ym(F.from)+'</h3><div class="tw"><table><thead><tr><th class="l">When</th><th>Value return, annualised</th><th>Value won</th><th>Months</th></tr></thead><tbody>'+up.map(function(r){return '<tr><td class="l">'+e(r[0])+'</td><td>'+sg(r[1],1,'%')+'</td><td>'+r[2]+'%</td><td>'+r[3]+'</td></tr>'}).join('')+'</tbody></table></div>'+
+ '<p style="margin:8px 0">'+(hyp?'<b>Broadly yes, with exceptions.</b> ':'<b>Not in this market.</b> ')+'Value returned '+pc(dn[1])+' a year (annualised) in months the market fell and '+pc(u[1])+' in months it rose; monthly correlation with the market is '+F.corr.toFixed(2)+'. Value came out ahead in '+F.bear_won+' of '+F.bear_n+' bear markets, and had lost ground in the 12 months before '+F.runup_lost+' of the '+F.bear_n+' peaks.</p>'+
+ '<div class="tw"><table><thead><tr><th class="l">Bear market (peak to trough)</th><th>Market</th><th>Value in the bear</th><th>Value, 12m before peak</th></tr></thead><tbody>'+(F.bears||[]).map(function(b){return '<tr><td class="l">'+ym(b[0])+' to '+ym(b[1])+'</td><td>'+sg(b[2],0,'%')+'</td><td>'+sg(b[3],1,'%')+'</td><td>'+sg(b[4],1,'%')+'</td></tr>'}).join('')+'</tbody></table></div>'+
+ '<p class="small" style="margin-top:8px">The pattern holds when the bear market deflates expensive growth stocks (2000 to 2002, 2022). It fails when the bear market is a credit or solvency scare, because banks and cyclicals are the cheap stocks and they fall hardest (2007 to 2009, early 2020).</p>'+
+ '<h3 class="h3" style="margin-top:12px">How to read the value spread</h3><p class="small">A larger spread does <b>not</b> mean value is being favoured. It means the opposite has already happened: expensive stocks have been bid up and cheap ones left behind, so value is unusually cheap relative to growth. Wide spreads have tended to come before value\'s better runs, and narrow spreads after value has already won. Read the two together: the spread is the set-up, HML is the pay-off. A wide spread with HML turning positive is the strongest backdrop for a value screen; a narrow spread with HML rolling over is the weakest.</p></div></div>';
+ el.innerHTML=h;
+ line('fch',F.series.map(function(p){return [p[0],p[1],p[2]]}),{base:0,fmt:function(y){return (y>0?'+':'')+y+'%'},xl:function(d,f){return f?ym(d):String(d).slice(0,4)},tip:function(p){return 'Value (HML) 12m: '+pc(p[1])+'<br>Market 12m: '+pc(p[2])},step:20});
+ if(SP)line('fsp',SP.series,{base:SP.median,dash:1,baseLabel:'median '+SP.median.toFixed(2)+'x',fmt:function(y){return y.toFixed(1)+'x'},xl:function(d){return String(d)},tip:function(p){return 'Spread '+p[1].toFixed(2)+'x'},step:.5});
+ ['fch','fsp'].forEach(function(i){var s=$(i);if(s){s.addEventListener('mousemove',lineHover);s.addEventListener('mouseleave',lineOut)}})}
 var COLS=[['code','Code','l'],['name','Company','l nm'],['val','Value score'],['fpe','Fwd P/E'],['eveb','EV/EBITDA'],['fcfy','FCF yield'],['pb','P/B'],['dy','Div yield'],['rec','Consensus'],['nan','Analysts'],['up','Target upside'],['net','Up / down 120d'],['sh','Short %'],['verdict','Screen vs Street','l'],['res','Research']];
 function sv(s,k){return k==='net'?(s.upg||0)-(s.dng||0):k==='res'?nres(s):k==='verdict'?VO.indexOf(s.verdict):s[k]}
 function table(){var a=shown();a.sort(function(p,q){var x=sv(p,st.sort),y=sv(q,st.sort);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*st.dir});
@@ -192,7 +230,7 @@ function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f
 function filters(){var a=cur(),secs={};a.forEach(function(s){secs[s.sector]=1});
  $('fv').innerHTML='<option value="">All verdicts</option>'+VO.map(function(k){return '<option value="'+k+'"'+(st.v===k?' selected':'')+'>'+V[k][0]+'</option>'}).join('');
  $('fs').innerHTML='<option value="">All sectors</option>'+Object.keys(secs).sort().map(function(k){return '<option'+(st.s===k?' selected':'')+'>'+e(k)+'</option>'}).join('')}
-function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.m===st.m)});tiles();filters();scatter();sidelists();table()}
+function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.m===st.m)});tiles();filters();scatter();sidelists();macro();factor();table()}
 function go(y){var s=S.filter(function(x){return x.y===y})[0];if(!s)return;st.v='';st.s='';st.q='';st.r=false;$('fq').value='';$('fr').checked=false;st.open=y;filters();scatter();table();var r=document.querySelector('tr.row.open');if(r)r.scrollIntoView({behavior:'smooth',block:'start'})}
 
 document.addEventListener('click',function(ev){var t=ev.target,x;
@@ -216,8 +254,9 @@ $('method').innerHTML='<p><b>Value score (0 to 100).</b> Each stock is ranked ag
 '<p><b>Street view.</b> Bullish = consensus rating 2.2 or better (1 = strong buy, 5 = sell) and 10%+ upside to the mean target; bearish = rating 2.8 or worse, or no upside; otherwise neutral. Fewer than 3 analysts = thin coverage.</p>'+
 '<p><b>Value-trap flags.</b> Forward EPS below trailing, ROE under 5%, debt/equity over 200% (ex financials and real estate), price more than 15% under its 200-day average, net broker downgrades in 120 days, short interest of 5%+ (ASX) or 8%+ of float (S&amp;P 500).</p>'+
 '<p><b>Short interest.</b> ASX: ASIC daily aggregated short positions as a share of shares on issue'+(D.short_date?' (report dated '+e(D.short_date)+'; ASIC publishes about four trading days in arrears)':'')+', with the change over about 20 trading days. S&amp;P 500: short interest as a share of float from Yahoo (exchange data, twice a month). A cheap stock with heavy or rising shorts is one where professional money is betting the screen is wrong.</p>'+
-'<p><b>Published research.</b> Broker consensus, targets and dated rating changes from Yahoo Finance. Broker headlines from Google News for the 25 cheapest names per index. Substack: the latest ~20 posts of each tracked publication are scanned for tickers and company names ('+ss.length+' tracked: '+ss.map(function(x){return '<a href="'+e(x.url)+'" target="_blank" rel="noopener">'+e(x.name)+'</a>'}).join(', ')+'). X: '+(D.x_api?'recent posts pulled through the X API for the cheapest names.':'X has no free read access, so each stock has a one-click X search link; posts appear here if an X API token is added.')+'</p>'+
+'<p><b>Published research.</b> Broker consensus, targets and dated rating changes from Yahoo Finance. Broker headlines from Google News for the 25 cheapest names per index. Independent research: the latest ~20 posts of each tracked Substack or research site are scanned for tickers and company names ('+ss.length+' tracked: '+ss.map(function(x){return '<a href="'+e(x.url)+'" target="_blank" rel="noopener">'+e(x.name)+'</a>'+(x.src&&x.src!=='live'?' <span class="small">['+e(x.src)+']</span>':'')}).join(', ')+'). Substack refuses GitHub\'s servers on substack.com addresses, so those feeds come from a saved copy refreshed from a PC; paid posts are matched on title and preview only. X: '+(D.x_api?'recent posts pulled through the X API for the cheapest names.':'X has no free read access, so each stock has a one-click X search link; posts appear here if an X API token is added.')+'</p>'+
 '<p><b>Limits.</b> Yahoo data has gaps and occasional errors, especially for ASX stocks that report in another currency, banks and insurers (EV/EBITDA and FCF do not apply) and REITs. Consensus numbers are averages of broker views, not the reports themselves. Name matching in Substack posts can produce false positives.</p>'+
+'<p><b>Value factor.</b> Monthly Fama/French factors from the Ken French Data Library (US from July 1963; Asia Pacific ex Japan from July 1990). Bear markets are peak-to-trough falls of 20% or more in the monthly total-return market index. The value spread is computed here from the library\'s NYSE book-to-market breakpoints and is a simple proxy, not an official series.</p>'+
 (D.log?'<p class="small">Last run: '+D.log.map(e).join(' · ')+'</p>':'');
 all();
 })();

@@ -10,7 +10,7 @@ use strict; use warnings; use JSON::PP; use File::Path qw(make_path); use POSIX 
 use Time::HiRes qw(sleep);
 
 my %o = (limit => 0, previous => '', out => 'dist');
-while (@ARGV) { my $a = shift; if ($a =~ /^--(limit|previous|out)$/) { $o{$1} = shift } }
+while (@ARGV) { my $a = shift; if ($a =~ /^--(limit|previous|out)$/) { $o{$1} = shift } elsif ($a eq '--feeds-only') { $o{feedsonly} = 1 } }
 my $UA  = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 my $JAR = "/tmp/vr-yahoo-cookies.txt";
 my $J   = JSON::PP->new->canonical(1);
@@ -23,6 +23,40 @@ sub esc  { my $s = shift; $s =~ s/([^A-Za-z0-9\-_.~])/sprintf('%%%02X', ord($1))
 sub slurp { my $f = shift; open my $h, '<:raw', $f or return ''; local $/; my $t = <$h>; close $h; $t }
 sub num  { my $v = shift; return undef unless defined $v; $v = $v->{raw} if ref $v eq 'HASH'; return undef unless defined $v && !ref $v && $v =~ /^-?[\d.]+(?:[eE][-+]?\d+)?$/; return $v + 0 }
 sub r2   { my ($v, $d) = @_; return undef unless defined $v; return sprintf("%.${d}f", $v) + 0 }
+
+# ---------- research feeds (Substack and other RSS) ----------
+# substack.com addresses refuse GitHub's servers (HTTP 403), so: feeds on their own domain are read live everywhere, and
+# everything else falls back to data/feeds.json, which `perl build.pl --feeds-only` writes from a machine that can read them.
+sub scan_feeds { my ($stocks, $cache) = @_;
+  my $cfg = js(slurp('substacks.json')) // []; my (%hits, @meta, %codes, @pat);
+  my %stop = map { $_ => 1 } qw(ALL IT ON NOW ARE SO KEY WELL DAY HAS LOW PEG CAT FAST COST TECH PAYC POOL ICE BALL GEN A T C D F K L O V);
+  for my $s (@$stocks) {
+    my $c = quotemeta $s->{code}; my @alt;
+    if ($s->{m} eq 'ASX') { push @alt, "ASX:\\s?$c\\b", "\\b$c\\.AX\\b" }
+    else { push @alt, "\\\$$c\\b", "(?:NYSE|NASDAQ|Nasdaq):\\s?$c\\b"; push @alt, "\\($c\\)" if length($s->{code}) >= 3 && !$stop{$s->{code}}; }
+    (my $nm = $s->{name} // '') =~ s/\s*\(.*?\)//g; 1 while $nm =~ s/[,\s]+(Inc\.?|Corp\.?|Corporation|Company|Co\.?|Limited|Ltd\.?|Group|Holdings?|plc|N\.V\.|& Co\.?|Incorporated|Trust|Technologies)$//i;
+    push @alt, '\b'.quotemeta($nm).'\b' if (length($nm) >= 8 || $nm =~ /\s/) && length($nm) >= 6;
+    my $re = join '|', @alt; push @pat, [$s->{y}, qr/$re/];
+  }
+  for my $f (@$cfg) {
+    my ($x, $code) = ('', '');
+    for my $ua ($UA, 'curl/8') { $x = `curl -sS -L --compressed --max-time 30 -A '$ua' -H 'Accept: application/rss+xml, application/xml, text/xml' -w ' HTTPCODE=%{http_code}' '$f->{feed}' 2>/dev/null` // ''; ($code) = $x =~ /HTTPCODE=(\d+)\s*$/; last if $x =~ /<item>/; sleep 1; }
+    utf8::decode($x); my @items; my $src = 'live';
+    while ($x =~ m{<item>(.*?)</item>}gs) { my $i = $1;
+      my %g; for my $tag (qw(title description link pubDate content:encoded)) { my ($v) = $i =~ m{<\Q$tag\E[^>]*>(.*?)</\Q$tag\E>}s; $v //= ''; $v =~ s/^\s*<!\[CDATA\[|\]\]>\s*$//g; $g{$tag} = $v; }
+      my $head = "$g{title} . $g{description}"; (my $body = $g{'content:encoded'}) =~ s/<[^>]+>/ /g;
+      for ($head, $body, $g{title}) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; s/&#8217;|&#039;|&#39;/'/g; s/&#8211;/-/g; s/&quot;/"/g; }
+      my @h; for my $p (@pat) { my ($y, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next; push @h, [$y, $where]; }
+      push @items, { t => $g{title}, u => $g{link}, d => $g{pubDate}, h => \@h };
+    }
+    if (!@items) { $codes{$code // 'none'}++; if ($cache && $cache->{feeds}{$f->{feed}}) { my $c = $cache->{feeds}{$f->{feed}}; @items = @{$c->{items} // []}; $src = "saved copy $c->{fetched}"; } else { $src = 'unreadable' } }
+    my $nh = 0; for my $it (@items) { for my $hit (@{$it->{h} // []}) { push @{$hits{$hit->[0]}}, { t => $it->{t}, u => $it->{u}, d => $it->{d}, s => $f->{name}, w => $hit->[1], k => ($f->{tag} // 'value') }; $nh++; } }
+    push @meta, { name => $f->{name}, url => $f->{url}, feed => $f->{feed}, tag => ($f->{tag} // 'value'), posts => scalar(@items), hits => $nh, src => $src, items => \@items,
+      latest => [map { { t => $_->{t}, u => $_->{u}, d => $_->{d} } } @items[0 .. ($#items < 2 ? $#items : 2)]] };
+    sleep 0.2;
+  }
+  return (\%hits, \@meta, \%codes);
+}
 
 # ---------- 1. universe ----------
 my @uni;
@@ -58,6 +92,13 @@ my @uni;
 }
 if ($o{limit}) { my %n; @uni = grep { ++$n{$_->{m}} <= $o{limit} } @uni; }
 die "no universe\n" unless @uni;
+
+if ($o{feedsonly}) {
+  my $old = js(slurp('data/feeds.json')) // {}; my ($hits, $meta) = scan_feeds(\@uni, undef); my $today = strftime('%Y-%m-%d', gmtime $NOW); my $ok = 0;
+  for my $f (@$meta) { next unless @{$f->{items}}; $old->{feeds}{$f->{feed}} = { fetched => $today, items => $f->{items} }; $ok++; }
+  $old->{fetched} = $today; open my $h, '>:raw', 'data/feeds.json' or die $!; print $h JSON::PP->new->utf8(1)->canonical(1)->encode($old); close $h;
+  note("feeds-only: $ok of ".scalar(@$meta)." feeds read and saved to data/feeds.json"); exit 0;
+}
 
 # ---------- 2. Yahoo ----------
 my $crumb = '';
@@ -191,37 +232,15 @@ for my $s (@focus) {
 }
 note("news: $news_ok of ".scalar(@focus)." focus names have broker headlines");
 
-# Substack: every publication in substacks.json has a free RSS feed (latest ~20 posts; paywalled posts give title + preview only).
-my @subs_meta; my $sub_hits = 0; my %feed_codes;
+# Research feeds: live where readable, otherwise the saved copy in data/feeds.json.
+my @subs_meta;
 {
-  my $cfg = js(slurp('substacks.json')) // [];
-  my %stop = map { $_ => 1 } qw(ALL IT ON NOW ARE SO KEY WELL DAY HAS LOW PEG CAT FAST COST TECH PAYC POOL ICE BALL GEN A T C D F K L O V);
-  my @pat;
-  for my $s (grep { !$_->{stale} } @S) {
-    my $c = quotemeta $s->{code}; my @alt;
-    if ($s->{m} eq 'ASX') { push @alt, "ASX:\\s?$c\\b", "\\b$c\\.AX\\b" }
-    else { push @alt, "\\\$$c\\b", "(?:NYSE|NASDAQ|Nasdaq):\\s?$c\\b"; push @alt, "\\($c\\)" if length($s->{code}) >= 3 && !$stop{$s->{code}}; }
-    (my $nm = $s->{name}) =~ s/\s*\(.*?\)//g; 1 while $nm =~ s/[,\s]+(Inc\.?|Corp\.?|Corporation|Company|Co\.?|Limited|Ltd\.?|Group|Holdings?|plc|N\.V\.|& Co\.?|Incorporated|Trust)$//i;
-    push @alt, '\b'.quotemeta($nm).'\b' if (length($nm) >= 8 || $nm =~ /\s/) && length($nm) >= 6;
-    my $re = join '|', @alt; push @pat, [$s, qr/$re/];
-  }
-  for my $f (@$cfg) {
-    my ($x, $code) = ('', '');
-    for my $ua ($UA, 'curl/8', 'Feedfetcher (RSS reader; value-research-desk)') { $x = `curl -sS -L --compressed --max-time 30 -A '$ua' -H 'Accept: application/rss+xml, application/xml, text/xml' -w '
-HTTPCODE=%{http_code}' '$f->{feed}' 2>/dev/null` // ''; ($code) = $x =~ /HTTPCODE=(\d+)\s*$/; last if $x =~ /<item>/; sleep 1; }
-    $feed_codes{$code // 'none'}++ unless $x =~ /<item>/;
-    utf8::decode($x); my ($n, $h) = (0, 0);
-    while ($x =~ m{<item>(.*?)</item>}gs) { my $i = $1; $n++;
-      my %g; for my $tag (qw(title description link pubDate content:encoded)) { my ($v) = $i =~ m{<\Q$tag\E[^>]*>(.*?)</\Q$tag\E>}s; $v //= ''; $v =~ s/^<!\[CDATA\[|\]\]>$//g; $g{$tag} = $v; }
-      my $head = "$g{title} . $g{description}"; (my $body = $g{'content:encoded'}) =~ s/<[^>]+>/ /g;
-      for ($head, $body) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; }
-      for my $p (@pat) { my ($s, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next;
-        (my $t = $g{title}) =~ s/&amp;/&/g; push @{$s->{subs}}, { t => $t, u => $g{link}, d => $g{pubDate}, s => $f->{name}, w => $where, k => ($f->{tag} // "value") }; $h++; }
-    }
-    push @subs_meta, { name => $f->{name}, tag => ($f->{tag} // "value"), url => $f->{url}, posts => $n, hits => $h }; $sub_hits += $h; sleep 0.3;
-  }
-  for my $s (@S) { next unless $s->{subs}; my @x = sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @{$s->{subs}}; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
-  note("substack: ".scalar(@$cfg)." feeds, ".scalar(grep { $_->{posts} } @subs_meta)." readable, $sub_hits stock mentions".(%feed_codes ? "; unreadable feeds by HTTP status: ".join(', ', map { "$_ x$feed_codes{$_}" } sort keys %feed_codes) : ""));
+  my $cache = js(slurp('data/feeds.json'));
+  my ($hits, $meta, $codes) = scan_feeds([grep { !$_->{stale} } @S], $cache);
+  for my $s (@S) { my $x = $hits->{$s->{y}} or next; my %seen; my @x = grep { !$seen{$_->{u}}++ } sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @$x; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
+  my ($live, $saved, $nh) = (0, 0, 0); for (@$meta) { $live++ if $_->{src} eq 'live'; $saved++ if $_->{src} =~ /^saved/; $nh += $_->{hits}; delete $_->{items}; delete $_->{feed}; }
+  @subs_meta = @$meta;
+  note("research feeds: ".scalar(@$meta)." tracked, $live read live, $saved from the saved copy".($cache ? " ($cache->{fetched})" : "").", ".(scalar(@$meta) - $live - $saved)." unreadable, $nh stock mentions".(%$codes ? "; live failures by HTTP status: ".join(', ', map { "$_ x$codes->{$_}" } sort keys %$codes) : ""));
 }
 
 my $xtok = $ENV{X_BEARER_TOKEN} // '';
@@ -241,11 +260,49 @@ if ($xtok) {
   note("X posts: $x_ok names");
 } else { note("X posts: skipped (no X_BEARER_TOKEN secret); page shows X search links instead"); }
 
+# ---------- 4c. Ken French value factor (HML): is value being rewarded? ----------
+my %factor;
+{
+  my $base = 'https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp'; make_path('data/ff');
+  my $load = sub { my $nm = shift; my $z = "/tmp/vr-$nm.zip"; `curl -sS -L --max-time 60 -A '$UA' -o '$z' '$base/${nm}_CSV.zip' 2>/dev/null`; my $c = -s $z ? `unzip -p '$z' 2>/dev/null` : '';
+    if ($c =~ /^\s*\d{4,6}\s*,/m) { if (!$ENV{GITHUB_ACTIONS}) { open my $h, '>:raw', "data/ff/$nm.csv"; print $h $c; close $h } return ($c, 'live') } return (slurp("data/ff/$nm.csv"), 'saved copy') };
+  my $cmp = sub { my $c = 1; $c *= 1 + $_ / 100 for @_; $c };
+  my $analyse = sub { my ($csv, $from) = @_; my @m;
+    for (split /\r?\n/, $csv) { last if /Annual Factors/; next unless /^\s*(\d{6})\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/; next if $4 <= -99; push @m, { d => $1, mkt => $2 + $5, hml => $4 }; }
+    return undef unless @m > 60;
+    my $ix = 1; for my $i (0 .. $#m) { $ix *= 1 + $m[$i]{mkt} / 100; $m[$i]{ix} = $ix; }
+    my @a = grep { $_->{d} >= $from } @m; my %r = (from => $a[0]{d}, to => $m[-1]{d});
+    my $st = sub { my @x = @_; return [0, 0, 0] unless @x; my $s = 0; $s += $_ for @x; my $w = grep { $_ > 0 } @x; [r2($s / @x * 12, 1), r2(100 * $w / @x, 0), scalar @x] };
+    $r{updown} = [ ['Market up more than 5% in the month', @{$st->(map { $_->{hml} } grep { $_->{mkt} > 5 } @a)}], ['Market up month', @{$st->(map { $_->{hml} } grep { $_->{mkt} > 0 } @a)}],
+                   ['Market down month', @{$st->(map { $_->{hml} } grep { $_->{mkt} <= 0 } @a)}], ['Market down more than 5% in the month', @{$st->(map { $_->{hml} } grep { $_->{mkt} < -5 } @a)}] ];
+    my $nn = @a; my ($sx, $sy, $sxx, $syy, $sxy) = (0) x 5; for (@a) { $sx += $_->{mkt}; $sy += $_->{hml}; $sxx += $_->{mkt}**2; $syy += $_->{hml}**2; $sxy += $_->{mkt} * $_->{hml} }
+    $r{corr} = r2(($nn * $sxy - $sx * $sy) / sqrt(($nn * $sxx - $sx**2) * ($nn * $syy - $sy**2)), 2);
+    my ($pi, $ti, $inb, @ep) = (0, 0, 0);
+    for my $i (1 .. $#a) { if ($a[$i]{ix} >= $a[$pi]{ix}) { push @ep, [$pi, $ti] if $inb; $inb = 0; $pi = $i; $ti = $i; next } if ($a[$i]{ix} < $a[$ti]{ix}) { $ti = $i; $inb = 1 if $a[$ti]{ix} / $a[$pi]{ix} - 1 <= -0.20 } }
+    push @ep, [$pi, $ti] if $inb; my ($bw, $rl) = (0, 0);
+    for my $e (@ep) { my ($p, $t) = @$e; my $c = $cmp->(map { $a[$_]{hml} } $p + 1 .. $t); my $s = $p - 11 < 0 ? 0 : $p - 11; my $ru = $cmp->(map { $a[$_]{hml} } $s .. $p);
+      $bw++ if $c > 1; $rl++ if $ru < 1; push @{$r{bears}}, [$a[$p]{d}, $a[$t]{d}, r2(100 * ($a[$t]{ix} / $a[$p]{ix} - 1), 0), r2(100 * ($c - 1), 1), r2(100 * ($ru - 1), 1)]; }
+    $r{bear_won} = $bw; $r{runup_lost} = $rl; $r{bear_n} = scalar @ep;
+    for my $i (grep { $m[$_]{d} >= 200001 } 12 .. $#m) { push @{$r{series}}, [$m[$i]{d} + 0, r2(100 * ($cmp->(map { $m[$_]{hml} } $i - 11 .. $i) - 1), 1), r2(100 * ($m[$i]{ix} / $m[$i - 12]{ix} - 1), 1)]; }
+    $r{h12} = $r{series}[-1][1]; $r{m12} = $r{series}[-1][2]; $r{h1} = $m[-1]{hml} + 0;
+    $r{h3y} = r2(100 * ($cmp->(map { $m[$_]{hml} } $#m - 35 .. $#m) ** (1 / 3) - 1), 1); $r{h10y} = r2(100 * ($cmp->(map { $m[$_]{hml} } $#m - 119 .. $#m) ** (1 / 10) - 1), 1);
+    \%r };
+  for my $set (['SPX', 'F-F_Research_Data_Factors', 196307, 'US (all NYSE, AMEX and NASDAQ stocks)'], ['ASX', 'Asia_Pacific_ex_Japan_3_Factors', 199007, 'Asia Pacific ex Japan (Australia, Hong Kong, New Zealand, Singapore)']) {
+    my ($csv, $src) = $load->($set->[1]); my $r = $analyse->($csv, $set->[2]); if ($r) { $r->{label} = $set->[3]; $r->{src} = $src; $factor{$set->[0]} = $r; }
+    note("Ken French $set->[1]: ".($r ? "to $r->{to}, HML 12m $r->{h12}% ($src)" : 'not available'));
+  }
+  my ($csv, $src) = $load->('BE-ME_Breakpoints'); my @sp;
+  for (split /\r?\n/, $csv) { next unless /^\s*(\d{4})\s*,/; my @c = map { s/\s+//g; $_ } split /,/; next unless @c >= 23 && $c[0] >= 1963 && $c[8] > 0; push @sp, [$c[0] + 0, r2($c[16] / $c[8], 2)]; }   # 70th / 30th NYSE book-to-market percentile
+  if (@sp > 20) { my @v = sort { $a <=> $b } map { $_->[1] } @sp; my $cur = $sp[-1][1]; my $below = grep { $_ < $cur } @v;
+    $factor{spread} = { series => \@sp, cur => $cur, year => $sp[-1][0], median => $v[int(@v / 2)], pct => r2(100 * $below / (@v - 1), 0), max => $v[-1], min => $v[0] };
+    note("value spread (US, 70th/30th B/M): $cur in $sp[-1][0], median $factor{spread}{median}, percentile $factor{spread}{pct}"); }
+}
+
 # ---------- 5. write ----------
 delete @$_{qw(epsf epst hi lo)} for @S;
 for my $s (@S) { for (keys %$s) { delete $s->{$_} unless defined $s->{$_} } }
 my $out = { generated_at => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime $NOW), refresh_url => ($ENV{REFRESH_URL} // ''), x_api => ($xtok && $x_ok ? JSON::PP::true : JSON::PP::false),
-  counts => { universe => scalar(@uni), stocks => scalar(@S), stale => $stale, qs_ok => $qs_ok, qs_fail => $qs_fail }, substacks => \@subs_meta, short_date => $SHORT_DATE, log => \@log, stocks => \@S };
+  counts => { universe => scalar(@uni), stocks => scalar(@S), stale => $stale, qs_ok => $qs_ok, qs_fail => $qs_fail }, substacks => \@subs_meta, short_date => $SHORT_DATE, factor => \%factor, log => \@log, stocks => \@S };
 make_path($o{out});
 my $json = JSON::PP->new->utf8(1)->canonical(1)->encode($out);
 open my $h, '>:raw', "$o{out}/data.json" or die $!; print $h $json; close $h;
