@@ -212,9 +212,9 @@ my @subs_meta; my $sub_hits = 0;
       my $head = "$g{title} . $g{description}"; (my $body = $g{'content:encoded'}) =~ s/<[^>]+>/ /g;
       for ($head, $body) { s/&amp;/&/g; s/&#36;/\$/g; s/&nbsp;/ /g; }
       for my $p (@pat) { my ($s, $re) = @$p; my $where = $head =~ $re ? 'title' : $body =~ $re ? 'body' : next;
-        (my $t = $g{title}) =~ s/&amp;/&/g; push @{$s->{subs}}, { t => $t, u => $g{link}, d => $g{pubDate}, s => $f->{name}, w => $where }; $h++; }
+        (my $t = $g{title}) =~ s/&amp;/&/g; push @{$s->{subs}}, { t => $t, u => $g{link}, d => $g{pubDate}, s => $f->{name}, w => $where, k => ($f->{tag} // "value") }; $h++; }
     }
-    push @subs_meta, { name => $f->{name}, url => $f->{url}, posts => $n, hits => $h }; $sub_hits += $h; sleep 0.3;
+    push @subs_meta, { name => $f->{name}, tag => ($f->{tag} // "value"), url => $f->{url}, posts => $n, hits => $h }; $sub_hits += $h; sleep 0.3;
   }
   for my $s (@S) { next unless $s->{subs}; my @x = sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @{$s->{subs}}; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
   note("substack: ".scalar(@$cfg)." feeds, ".scalar(grep { $_->{posts} } @subs_meta)." readable, $sub_hits stock mentions");

@@ -91,7 +91,7 @@ summary{cursor:pointer;color:var(--ink2)}
       <h2>Where the screen and the Street disagree most</h2>
       <div class="small">Cheap on the screen, but brokers are bearish or see no upside. Either the market is missing something or it is a value trap.</div>
       <ul class="list" id="dis" style="list-style:none;padding:0;margin:8px 0 0"></ul>
-      <h2 style="margin-top:14px">Latest Substack write-ups on screened stocks</h2>
+      <h2 style="margin-top:14px">Latest independent research on screened stocks (Substack, short sellers, activists)</h2>
       <ul class="list" id="subl" style="list-style:none;padding:0;margin:0"></ul>
     </div>
   </div>
@@ -157,7 +157,7 @@ function sidelists(){var a=cur().filter(function(s){return s.verdict==='disagree
  $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Value score '+s.val+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+', '+(s.nan||0)+' analysts) · target '+(s.up>0?'+':'')+f(s.up,1,'%')+(s.flags&&s.flags.length?' · <span class="flag">'+e(s.flags[0])+'</span>':'')+'</span></li>'}).join(''):'<li class="small">None in this market right now.</li>';
  var p=[];cur().forEach(function(s){(s.subs||[]).forEach(function(x){p.push({s:s,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});
  var seen={};p=p.filter(function(o){var k=o.x.u+o.s.y;if(seen[k])return false;seen[k]=1;return true}).slice(0,6);
- $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+' · '+dstr(o.x.d)+' · mentions <a href="#" data-go="'+e(o.s.y)+'">'+e(o.s.code)+'</a> ('+dot(o.s.verdict)+' '+e(V[o.s.verdict][0])+')</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
+ $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions <a href="#" data-go="'+e(o.s.y)+'">'+e(o.s.code)+'</a> ('+dot(o.s.verdict)+' '+e(V[o.s.verdict][0])+')</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
 
 var COLS=[['code','Code','l'],['name','Company','l nm'],['val','Value score'],['fpe','Fwd P/E'],['eveb','EV/EBITDA'],['fcfy','FCF yield'],['pb','P/B'],['dy','Div yield'],['rec','Consensus'],['nan','Analysts'],['up','Target upside'],['net','Up / down 120d'],['sh','Short %'],['verdict','Screen vs Street','l'],['res','Research']];
 function sv(s,k){return k==='net'?(s.upg||0)-(s.dng||0):k==='res'?nres(s):k==='verdict'?VO.indexOf(s.verdict):s[k]}
@@ -184,7 +184,7 @@ function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f
  if(s.acts&&s.acts.length)h+='<ul>'+s.acts.map(function(a){var w=a.a==='up'?'<span class="pos">Upgrade</span>':a.a==='down'?'<span class="neg">Downgrade</span>':a.a==='init'?'Initiation':'Reiterated';return '<li>'+e(a.d)+' <b>'+e(a.firm)+'</b>: '+w+' '+(a.from&&a.from!==a.to?e(a.from)+' → ':'')+e(a.to||'')+(a.pt?' · target '+(a.ppt&&a.ppt!==a.pt?a.ppt+' → ':'')+a.pt:'')+'</li>'}).join('')+'</ul>';
  else h+='<p class="small">No dated broker rating changes in the last 120 days'+(s.m==='ASX'?' (Yahoo carries few for ASX stocks)':'')+'.</p>';
  h+='</div><div><h3>Published research</h3>';
- if(s.subs)h+='<div class="small">Substack</div><ul>'+s.subs.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s)+' · '+dstr(x.d)+(x.w==='body'?' · mentioned in text':'')+'</small></li>'}).join('')+'</ul>';
+ if(s.subs)h+='<div class="small">Substack</div><ul>'+s.subs.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s)+(x.k&&x.k!=='value'?' ('+e(x.k)+')':'')+' · '+dstr(x.d)+(x.w==='body'?' · mentioned in text':'')+'</small></li>'}).join('')+'</ul>';
  if(s.news)h+='<div class="small">Broker headlines (30 days)</div><ul>'+s.news.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
  if(s.xposts)h+='<div class="small">X posts</div><ul>'+s.xposts.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t.slice(0,180))+'</a> <small>@'+e(x.by||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
  h+='<p><a class="btn" href="'+xq(s)+'" target="_blank" rel="noopener">Search X for research</a> <a class="btn" href="'+ssq(s)+'" target="_blank" rel="noopener">Search Substack</a> <a class="btn" href="https://finance.yahoo.com/quote/'+encodeURIComponent(s.y)+'/analysis" target="_blank" rel="noopener">Yahoo analysis</a></p></div></div>';return h}
