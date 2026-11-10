@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Value vs Research Desk</title>
+<style>
+:root{--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+--c-agree:#2a78d6;--c-disagree:#eb6834;--c-quiet:#1baf7a;--c-crowded:#eda100;--c-uncovered:#6250d6;--c-other:#b9b8b0;
+--good:#006300;--bad:#b3261e;--chip:#efeee9;--sel:#e9f1fb}
+@media (prefers-color-scheme:dark){:root{--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
+--c-agree:#3987e5;--c-disagree:#d95926;--c-quiet:#199e70;--c-crowded:#c98500;--c-uncovered:#9085e9;--c-other:#4a4a46;
+--good:#0ca30c;--bad:#e66767;--chip:#262624;--sel:#16263a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:0 0 2px;letter-spacing:-.01em}
+h2{font-size:15px;margin:0 0 8px}
+.sub{color:var(--ink2);margin:0 0 14px;max-width:820px}
+.top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.meta{color:var(--muted);font-size:12px;text-align:right}
+a{color:var(--c-agree)}
+.btn,.tab{font:inherit;border:1px solid var(--axis);background:var(--surface);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block}
+.tabs{display:flex;gap:6px;margin:14px 0}
+.tab[aria-selected=true]{background:var(--ink);color:var(--page);border-color:var(--ink)}
+.card{background:var(--surface);border:1px solid var(--grid);border-radius:12px;padding:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.tile .n{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{color:var(--ink2);font-size:12px;display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.grid2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;margin-bottom:12px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:6px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+svg text{fill:var(--muted);font-size:11px}
+#tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.18);display:none;max-width:260px;z-index:5}
+#tip b{font-size:13px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center}
+select,input[type=search]{font:inherit;padding:6px 8px;border:1px solid var(--axis);border-radius:8px;background:var(--surface);color:var(--ink)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--grid);text-align:right;white-space:nowrap}
+th{font-size:12px;color:var(--ink2);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--surface)}
+th.l,td.l{text-align:left}
+td.nm{max-width:210px;overflow:hidden;text-overflow:ellipsis}
+tr.row{cursor:pointer}
+tr.row:hover,tr.row.open{background:var(--sel)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--ink)}
+.bar{display:inline-block;width:54px;height:6px;background:var(--grid);border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ink2);border-radius:3px}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.detail td{white-space:normal;text-align:left;background:var(--page);padding:14px}
+.dg{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.dg h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px}
+.dg ul{margin:0;padding:0;list-style:none}
+.dg li{margin:0 0 6px;font-size:13px}
+.dg small,.small{color:var(--muted);font-size:12px}
+.kv{display:grid;grid-template-columns:auto auto auto;gap:2px 12px;font-size:13px}
+.kv span:nth-child(3n){color:var(--muted)}
+.dist{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin:4px 0}
+.dist i{display:block;height:100%}
+.flag{color:var(--bad)}
+.list li{padding:6px 0;border-bottom:1px solid var(--grid)}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--ink2)}
+.foot{color:var(--muted);font-size:12px;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Value vs Research Desk</h1>
+      <p class="sub">A quantitative value screen of the S&amp;P/ASX 200 and S&amp;P 500, run against what published research says: broker consensus and target prices, recent rating changes, broker headlines, Substack write-ups and X.</p>
+    </div>
+    <div class="meta"><div id="gen"></div><a class="btn" id="refresh" style="display:none;margin-top:6px" target="_blank" rel="noopener">Refresh data</a></div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-m="ASX">S&amp;P/ASX 200</button>
+    <button class="tab" role="tab" data-m="SPX">S&amp;P 500</button>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div class="grid2">
+    <div class="card">
+      <h2>Screen vs Street: value score against consensus target upside</h2>
+      <div class="small">Each dot is a stock. Right = cheaper on the screen. Up = more upside to the average broker target. Click a dot for the research.</div>
+      <svg id="sc" viewBox="0 0 720 380" width="100%" role="img" aria-label="Scatter of value score against target upside"></svg>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="card">
+      <h2>Where the screen and the Street disagree most</h2>
+      <div class="small">Cheap on the screen, but brokers are bearish or see no upside. Either the market is missing something or it is a value trap.</div>
+      <ul class="list" id="dis" style="list-style:none;padding:0;margin:8px 0 0"></ul>
+      <h2 style="margin-top:14px">Latest Substack write-ups on screened stocks</h2>
+      <ul class="list" id="subl" style="list-style:none;padding:0;margin:0"></ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="filters">
+      <select id="fv" aria-label="Verdict"></select>
+      <select id="fs" aria-label="Sector"></select>
+      <input type="search" id="fq" placeholder="Search code or name" aria-label="Search">
+      <label class="small"><input type="checkbox" id="fr"> Has Substack / news / X research</label>
+      <span class="small" id="cnt"></span>
+    </div>
+    <div class="tw"><table id="tb"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <details class="card">
+    <summary><b>Method, sources and limits</b></summary>
+    <div id="method" style="margin-top:10px;color:var(--ink2);max-width:900px"></div>
+  </details>
+  <p class="foot">Research screen built from public data only (Yahoo Finance, Google News, Substack RSS). Figures can be wrong or stale; nothing here is investment advice or a recommendation to buy or sell.</p>
+</div>
+<div id="tip"></div>
+<script type="application/json" id="d-data">{}</script>
+<script>
+(function(){
+var D=JSON.parse(document.getElementById('d-data').textContent||'{}'), S=D.stocks||[];
+var V={agree:['Cheap, Street agrees','--c-agree'],disagree:['Cheap, Street disagrees','--c-disagree'],quiet:['Cheap, Street neutral','--c-quiet'],uncovered:['Cheap, thin coverage','--c-uncovered'],crowded:['Expensive, Street bullish','--c-crowded'],other:['Neither','--c-other'],na:['Not scored','--c-other']};
+var VO=['agree','disagree','quiet','uncovered','crowded','other'];
+var st={m:'ASX',sort:'val',dir:-1,open:null,v:'',s:'',q:'',r:false};
+try{var h=location.hash.replace('#','');if(h==='SPX'||h==='ASX')st.m=h}catch(e){}
+function $(i){return document.getElementById(i)}
+function e(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function f(v,d,suf){return v==null?'<span class="small">n/a</span>':Number(v).toFixed(d==null?1:d)+(suf||'')}
+function sg(v,d,suf){return v==null?'<span class="small">n/a</span>':'<span class="'+(v>0?'pos':v<0?'neg':'')+'">'+(v>0?'+':'')+Number(v).toFixed(d==null?1:d)+(suf||'')+'</span>'}
+function dot(k){return '<i class="dot" style="background:var('+V[k][1]+')"></i>'}
+function recL(r){return r==null?'n/a':r<=1.5?'Strong buy':r<=2.2?'Buy':r<2.8?'Hold':r<3.5?'Underperform':'Sell'}
+function cap(s){var v=s.mcap;if(!v)return 'n/a';var c=s.cur==='AUD'?'A$':'US$';return c+(v>=1e12?(v/1e12).toFixed(2)+'tn':v>=1e9?(v/1e9).toFixed(1)+'bn':(v/1e6).toFixed(0)+'m')}
+function nres(s){return (s.subs?s.subs.length:0)+(s.news?s.news.length:0)+(s.xposts?s.xposts.length:0)}
+function dstr(d){var t=new Date(d);return isNaN(t)?'':t.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}
+function xq(s){var q=s.m==='ASX'?'("ASX:'+s.code+'" OR "'+s.code+'.AX" OR "$'+s.code+'")':'"$'+s.code+'"';return 'https://x.com/search?q='+encodeURIComponent(q+' (research OR "price target" OR upgrade OR downgrade OR valuation)')+'&f=live'}
+function ssq(s){return 'https://substack.com/search/'+encodeURIComponent(s.name)+'?searching=all_posts'}
+function cur(){return S.filter(function(s){return s.m===st.m})}
+function shown(){var q=st.q.toLowerCase();return cur().filter(function(s){return(!st.v||s.verdict===st.v)&&(!st.s||s.sector===st.s)&&(!q||(s.code+' '+s.name).toLowerCase().indexOf(q)>=0)&&(!st.r||nres(s)>0)})}
+
+function tiles(){var a=cur(),n=function(k){return a.filter(function(s){return s.verdict===k}).length};
+ var val=a.filter(function(s){return s.val>=70}).length, subs=a.filter(function(s){return s.subs}).length;
+ var t=[[a.length,'Stocks screened',''],[val,'Cheap on the screen (score 70+)',''],[n('agree'),V.agree[0],'agree'],[n('disagree'),V.disagree[0],'disagree'],[n('quiet')+n('uncovered'),'Cheap, Street neutral or thin','quiet'],[subs,'With a Substack mention','']];
+ $('tiles').innerHTML=t.map(function(x){return '<div class="card tile"><div class="n">'+x[0]+'</div><div class="l">'+(x[2]?dot(x[2]):'')+e(x[1])+'</div></div>'}).join('')}
+
+function scatter(){var a=shown().filter(function(s){return s.val!=null&&s.up!=null}),W=720,H=380,L=44,R=14,T=12,B=36,y0=-40,y1=80;
+ function X(v){return L+(W-L-R)*v/100} function Y(v){v=Math.max(y0,Math.min(y1,v));return T+(H-T-B)*(1-(v-y0)/(y1-y0))}
+ var g='';for(var y=y0;y<=y1;y+=20)g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(y)+'" y2="'+Y(y)+'" stroke="var(--'+(y===0?'axis':'grid')+')"/><text x="'+(L-6)+'" y="'+(Y(y)+4)+'" text-anchor="end">'+(y>0?'+':'')+y+'%</text>';
+ for(var x=0;x<=100;x+=20)g+='<text x="'+X(x)+'" y="'+(H-B+16)+'" text-anchor="middle">'+x+'</text>';
+ g+='<line x1="'+X(70)+'" x2="'+X(70)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--axis)" stroke-dasharray="3 4"/><text x="'+(X(70)+6)+'" y="'+(T+10)+'">cheap on the screen</text>';
+ g+='<text x="'+((L+W-R)/2)+'" y="'+(H-4)+'" text-anchor="middle">Value score (0 = expensive vs sector, 100 = cheap)</text>';
+ g+='<text transform="translate(11,'+((T+H-B)/2)+') rotate(-90)" text-anchor="middle">Upside to mean target</text>';
+ a.sort(function(p,q){return (p.verdict==='other')===(q.verdict==='other')?0:p.verdict==='other'?-1:1});
+ a.forEach(function(s){var o=s.verdict==='other';g+='<circle data-y="'+e(s.y)+'" cx="'+X(s.val).toFixed(1)+'" cy="'+Y(s.up).toFixed(1)+'" r="'+(o?3.5:5)+'" fill="var('+V[s.verdict][1]+')" stroke="var(--surface)" stroke-width="'+(o?1:2)+'" style="cursor:pointer"/>'});
+ // direct labels: top few disagreements and agreements
+ ['agree','disagree'].forEach(function(k){a.filter(function(s){return s.verdict===k}).sort(function(p,q){return q.val-p.val}).slice(0,4).forEach(function(s){g+='<text x="'+(X(s.val)+8)+'" y="'+(Y(s.up)+4)+'" style="fill:var(--ink2)">'+e(s.code)+'</text>'})});
+ $('sc').innerHTML=g;
+ $('legend').innerHTML=VO.map(function(k){return '<span>'+dot(k)+e(V[k][0])+'</span>'}).join('')}
+
+function sidelists(){var a=cur().filter(function(s){return s.verdict==='disagree'}).sort(function(p,q){return q.val-p.val}).slice(0,6);
+ $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Value score '+s.val+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+', '+(s.nan||0)+' analysts) · target '+(s.up>0?'+':'')+f(s.up,1,'%')+(s.flags&&s.flags.length?' · <span class="flag">'+e(s.flags[0])+'</span>':'')+'</span></li>'}).join(''):'<li class="small">None in this market right now.</li>';
+ var p=[];cur().forEach(function(s){(s.subs||[]).forEach(function(x){p.push({s:s,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});
+ var seen={};p=p.filter(function(o){var k=o.x.u+o.s.y;if(seen[k])return false;seen[k]=1;return true}).slice(0,6);
+ $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+' · '+dstr(o.x.d)+' · mentions <a href="#" data-go="'+e(o.s.y)+'">'+e(o.s.code)+'</a> ('+dot(o.s.verdict)+' '+e(V[o.s.verdict][0])+')</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
+
+var COLS=[['code','Code','l'],['name','Company','l nm'],['val','Value score'],['fpe','Fwd P/E'],['eveb','EV/EBITDA'],['fcfy','FCF yield'],['pb','P/B'],['dy','Div yield'],['rec','Consensus'],['nan','Analysts'],['up','Target upside'],['net','Up / down 120d'],['sh','Short %'],['verdict','Screen vs Street','l'],['res','Research']];
+function sv(s,k){return k==='net'?(s.upg||0)-(s.dng||0):k==='res'?nres(s):k==='verdict'?VO.indexOf(s.verdict):s[k]}
+function table(){var a=shown();a.sort(function(p,q){var x=sv(p,st.sort),y=sv(q,st.sort);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*st.dir});
+ $('cnt').textContent=a.length+' of '+cur().length+' stocks';
+ $('tb').tHead.innerHTML='<tr>'+COLS.map(function(c){return '<th class="'+(c[2]||'')+'" data-k="'+c[0]+'">'+c[1]+(st.sort===c[0]?(st.dir<0?' ▼':' ▲'):'')+'</th>'}).join('')+'</tr>';
+ var h='';a.forEach(function(s){var o=st.open===s.y;
+  h+='<tr class="row'+(o?' open':'')+'" data-y="'+e(s.y)+'"><td class="l"><b>'+e(s.code)+'</b></td><td class="l nm" title="'+e(s.name)+'">'+e(s.name)+(s.stale?' <span class="small">(stale)</span>':'')+'</td>'+
+  '<td>'+(s.val==null?'<span class="small">n/a</span>':'<span class="bar"><i style="width:'+s.val+'%"></i></span>'+s.val)+'</td><td>'+f(s.fpe,1,'x')+'</td><td>'+f(s.eveb,1,'x')+'</td><td>'+f(s.fcfy,1,'%')+'</td><td>'+f(s.pb,1,'x')+'</td><td>'+f(s.dy,1,'%')+'</td>'+
+  '<td>'+(s.rec==null?'<span class="small">n/a</span>':recL(s.rec)+' <span class="small">'+s.rec.toFixed(2)+'</span>')+'</td><td>'+(s.nan||'<span class="small">0</span>')+'</td><td>'+sg(s.up,1,'%')+'</td><td>'+((s.upg||s.dng)?'<span class="pos">'+(s.upg||0)+'</span> / <span class="neg">'+(s.dng||0)+'</span>':'<span class="small">none</span>')+'</td><td>'+f(s.sh,1,'%')+'</td>'+
+  '<td class="l"><span class="chip">'+dot(s.verdict)+e(V[s.verdict][0])+'</span></td><td>'+(nres(s)||'<span class="small">links</span>')+'</td></tr>';
+  if(o)h+='<tr class="detail"><td colspan="'+COLS.length+'">'+detail(s)+'</td></tr>'});
+ $('tb').tBodies[0].innerHTML=h||'<tr><td colspan="'+COLS.length+'" class="l small">No stocks match the filters.</td></tr>'}
+
+function detail(s){var p=s.p||{},M=[['ey','Forward earnings yield',s.fpe!=null?f(s.fpe,1,'x P/E'):'n/a',30],['ev','EV/EBITDA',f(s.eveb,1,'x'),25],['fc','Free cash flow yield',f(s.fcfy,1,'%'),20],['bk','Price to book',f(s.pb,2,'x'),15],['dv','Dividend yield',f(s.dy,2,'%'),10]];
+ var h='<div class="dg"><div><h3>Screen: why it scores '+(s.val==null?'n/a':s.val)+'</h3><div class="kv">'+M.map(function(m){return '<span>'+m[1]+'</span><span>'+m[2]+'</span><span>'+(p[m[0]]==null?'not used':'cheaper than '+p[m[0]]+'% of peers')+'</span>'}).join('')+'</div>'+
+ '<p class="small">'+e(s.sector)+' · '+cap(s)+' · price '+f(s.px,2)+' '+e(s.cur||'')+' · 1y '+sg(s.y1,0,'%')+' · vs 200d '+sg(s.d200,0,'%')+' · ROE '+f(s.roe,0,'%')+' · debt/equity '+f(s.de,0,'%')+' · short interest '+f(s.sh,1,'%')+(s.shc!=null?' ('+(s.shc>0?'+':'')+s.shc.toFixed(1)+'pp in a month)':'')+'</p>'+
+ (s.flags&&s.flags.length?'<ul>'+s.flags.map(function(x){return '<li class="flag">⚠ '+e(x)+'</li>'}).join('')+'</ul>':'<p class="small">No value-trap flags.</p>')+'</div>';
+ h+='<div><h3>Street: broker consensus</h3>';
+ if(s.rec!=null){h+='<div><b>'+recL(s.rec)+'</b> ('+s.rec.toFixed(2)+' on 1 = strong buy to 5 = sell) from '+(s.nan||0)+' analysts</div>';
+  if(s.dist){var tot=s.dist.reduce(function(a,b){return a+b},0)||1,cs=['--c-agree','--c-agree','--c-other','--c-disagree','--c-disagree'],op=[1,.6,1,.6,1],nm=['Strong buy','Buy','Hold','Sell','Strong sell'];
+   h+='<div class="dist">'+s.dist.map(function(n,i){return n?'<i style="width:'+(100*n/tot)+'%;background:var('+cs[i]+');opacity:'+op[i]+'" title="'+nm[i]+': '+n+'"></i>':''}).join('')+'</div><div class="small">'+s.dist.map(function(n,i){return nm[i]+' '+n}).join(' · ')+'</div>'}
+  h+='<p>Mean target '+f(s.tmean,2)+' ('+sg(s.up,1,'%')+'), range '+f(s.tlo,2)+' to '+f(s.thi,2)+'</p>'}else h+='<p class="small">No broker consensus on Yahoo.</p>';
+ if(s.acts&&s.acts.length)h+='<ul>'+s.acts.map(function(a){var w=a.a==='up'?'<span class="pos">Upgrade</span>':a.a==='down'?'<span class="neg">Downgrade</span>':a.a==='init'?'Initiation':'Reiterated';return '<li>'+e(a.d)+' <b>'+e(a.firm)+'</b>: '+w+' '+(a.from&&a.from!==a.to?e(a.from)+' → ':'')+e(a.to||'')+(a.pt?' · target '+(a.ppt&&a.ppt!==a.pt?a.ppt+' → ':'')+a.pt:'')+'</li>'}).join('')+'</ul>';
+ else h+='<p class="small">No dated broker rating changes in the last 120 days'+(s.m==='ASX'?' (Yahoo carries few for ASX stocks)':'')+'.</p>';
+ h+='</div><div><h3>Published research</h3>';
+ if(s.subs)h+='<div class="small">Substack</div><ul>'+s.subs.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s)+' · '+dstr(x.d)+(x.w==='body'?' · mentioned in text':'')+'</small></li>'}).join('')+'</ul>';
+ if(s.news)h+='<div class="small">Broker headlines (30 days)</div><ul>'+s.news.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t)+'</a> <small>'+e(x.s||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
+ if(s.xposts)h+='<div class="small">X posts</div><ul>'+s.xposts.map(function(x){return '<li><a href="'+e(x.u)+'" target="_blank" rel="noopener">'+e(x.t.slice(0,180))+'</a> <small>@'+e(x.by||'')+' · '+dstr(x.d)+'</small></li>'}).join('')+'</ul>';
+ h+='<p><a class="btn" href="'+xq(s)+'" target="_blank" rel="noopener">Search X for research</a> <a class="btn" href="'+ssq(s)+'" target="_blank" rel="noopener">Search Substack</a> <a class="btn" href="https://finance.yahoo.com/quote/'+encodeURIComponent(s.y)+'/analysis" target="_blank" rel="noopener">Yahoo analysis</a></p></div></div>';return h}
+
+function filters(){var a=cur(),secs={};a.forEach(function(s){secs[s.sector]=1});
+ $('fv').innerHTML='<option value="">All verdicts</option>'+VO.map(function(k){return '<option value="'+k+'"'+(st.v===k?' selected':'')+'>'+V[k][0]+'</option>'}).join('');
+ $('fs').innerHTML='<option value="">All sectors</option>'+Object.keys(secs).sort().map(function(k){return '<option'+(st.s===k?' selected':'')+'>'+e(k)+'</option>'}).join('')}
+function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.m===st.m)});tiles();filters();scatter();sidelists();table()}
+function go(y){var s=S.filter(function(x){return x.y===y})[0];if(!s)return;st.v='';st.s='';st.q='';st.r=false;$('fq').value='';$('fr').checked=false;st.open=y;filters();scatter();table();var r=document.querySelector('tr.row.open');if(r)r.scrollIntoView({behavior:'smooth',block:'start'})}
+
+document.addEventListener('click',function(ev){var t=ev.target,x;
+ if(x=t.closest('.tab')){st.m=x.dataset.m;st.open=null;st.s='';try{history.replaceState(null,'','#'+st.m)}catch(e){}all();return}
+ if(x=t.closest('[data-go]')){ev.preventDefault();go(x.dataset.go);return}
+ if(x=t.closest('circle[data-y]')){go(x.dataset.y);return}
+ if(x=t.closest('th[data-k]')){var k=x.dataset.k;if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=(k==='code'||k==='name'||k==='fpe'||k==='eveb'||k==='pb'||k==='rec'||k==='verdict')?1:-1}table();return}
+ if(t.closest('a,.btn'))return;
+ if(x=t.closest('tr.row')){st.open=st.open===x.dataset.y?null:x.dataset.y;table()}});
+$('fv').onchange=function(){st.v=this.value;scatter();table()};$('fs').onchange=function(){st.s=this.value;scatter();table()};
+$('fq').oninput=function(){st.q=this.value;scatter();table()};$('fr').onchange=function(){st.r=this.checked;scatter();table()};
+var tip=$('tip');$('sc').addEventListener('mousemove',function(ev){var c=ev.target.closest('circle[data-y]');if(!c){tip.style.display='none';return}
+ var s=S.filter(function(x){return x.y===c.dataset.y})[0];tip.innerHTML='<b>'+e(s.code)+'</b> '+e(s.name)+'<br>'+dot(s.verdict)+' '+e(V[s.verdict][0])+'<br>Value score '+s.val+' · fwd P/E '+f(s.fpe,1,'x')+'<br>Consensus '+recL(s.rec)+' · '+(s.nan||0)+' analysts<br>Target upside '+(s.up>0?'+':'')+f(s.up,1,'%');
+ tip.style.display='block';var w=tip.offsetWidth;tip.style.left=Math.min(ev.clientX+14,innerWidth-w-8)+'px';tip.style.top=(ev.clientY+14)+'px'});
+$('sc').addEventListener('mouseleave',function(){tip.style.display='none'});
+
+var g=D.generated_at?new Date(D.generated_at):null;$('gen').textContent=g?'Data as of '+g.toLocaleString('en-AU',{dateStyle:'medium',timeStyle:'short'}):'No data yet';
+if(D.refresh_url){$('refresh').href=D.refresh_url;$('refresh').style.display='inline-block'}
+var ss=D.substacks||[];
+$('method').innerHTML='<p><b>Value score (0 to 100).</b> Each stock is ranked against its own GICS sector within its index (against the whole index where the sector has fewer than 8 names) on five measures, then blended: forward earnings yield 30%, EV/EBITDA 25%, free cash flow yield 20%, price to book 15%, dividend yield 10%. Missing measures are dropped and the weights rescaled; at least three are needed. 70+ counts as cheap, 30 or less as expensive.</p>'+
+'<p><b>Street view.</b> Bullish = consensus rating 2.2 or better (1 = strong buy, 5 = sell) and 10%+ upside to the mean target; bearish = rating 2.8 or worse, or no upside; otherwise neutral. Fewer than 3 analysts = thin coverage.</p>'+
+'<p><b>Value-trap flags.</b> Forward EPS below trailing, ROE under 5%, debt/equity over 200% (ex financials and real estate), price more than 15% under its 200-day average, net broker downgrades in 120 days, short interest of 5%+ (ASX) or 8%+ of float (S&amp;P 500).</p>'+
+'<p><b>Short interest.</b> ASX: ASIC daily aggregated short positions as a share of shares on issue'+(D.short_date?' (report dated '+e(D.short_date)+'; ASIC publishes about four trading days in arrears)':'')+', with the change over about 20 trading days. S&amp;P 500: short interest as a share of float from Yahoo (exchange data, twice a month). A cheap stock with heavy or rising shorts is one where professional money is betting the screen is wrong.</p>'+
+'<p><b>Published research.</b> Broker consensus, targets and dated rating changes from Yahoo Finance. Broker headlines from Google News for the 25 cheapest names per index. Substack: the latest ~20 posts of each tracked publication are scanned for tickers and company names ('+ss.length+' tracked: '+ss.map(function(x){return '<a href="'+e(x.url)+'" target="_blank" rel="noopener">'+e(x.name)+'</a>'}).join(', ')+'). X: '+(D.x_api?'recent posts pulled through the X API for the cheapest names.':'X has no free read access, so each stock has a one-click X search link; posts appear here if an X API token is added.')+'</p>'+
+'<p><b>Limits.</b> Yahoo data has gaps and occasional errors, especially for ASX stocks that report in another currency, banks and insurers (EV/EBITDA and FCF do not apply) and REITs. Consensus numbers are averages of broker views, not the reports themselves. Name matching in Substack posts can produce false positives.</p>'+
+(D.log?'<p class="small">Last run: '+D.log.map(e).join(' · ')+'</p>':'');
+all();
+})();
+</script>
+</body>
+</html>

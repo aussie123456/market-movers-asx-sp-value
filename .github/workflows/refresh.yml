@@ -1,0 +1,55 @@
+name: Refresh dashboard
+
+on:
+  schedule:
+    # 22:00 UTC = 9:00am Sydney while daylight saving applies (Oct to Apr); use "0 23 * * *" for 9am in winter.
+    - cron: "0 22 * * 0-4"
+  workflow_dispatch:        # the "Run workflow" button = manual refresh
+  push:
+    branches: [main]
+    paths: [template.html, build.pl, substacks.json, .github/workflows/refresh.yml]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Fetch previously published data (back-fill when a feed fails)
+        run: |
+          curl -sSL --fail --max-time 60 -o previous.json "${{ steps.pages.outputs.base_url }}/data.json" || rm -f previous.json
+          ls -l previous.json 2>/dev/null || echo "no previous data (first run)"
+
+      - name: Build page
+        env:
+          REFRESH_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/refresh.yml
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}   # optional; X posts are skipped without it
+        run: perl build.pl --previous previous.json --out dist
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
