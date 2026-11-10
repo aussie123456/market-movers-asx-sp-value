@@ -192,7 +192,7 @@ for my $s (@focus) {
 note("news: $news_ok of ".scalar(@focus)." focus names have broker headlines");
 
 # Substack: every publication in substacks.json has a free RSS feed (latest ~20 posts; paywalled posts give title + preview only).
-my @subs_meta; my $sub_hits = 0;
+my @subs_meta; my $sub_hits = 0; my %feed_codes;
 {
   my $cfg = js(slurp('substacks.json')) // [];
   my %stop = map { $_ => 1 } qw(ALL IT ON NOW ARE SO KEY WELL DAY HAS LOW PEG CAT FAST COST TECH PAYC POOL ICE BALL GEN A T C D F K L O V);
@@ -206,7 +206,11 @@ my @subs_meta; my $sub_hits = 0;
     my $re = join '|', @alt; push @pat, [$s, qr/$re/];
   }
   for my $f (@$cfg) {
-    my $x = curl($f->{feed}); utf8::decode($x); my ($n, $h) = (0, 0);
+    my ($x, $code) = ('', '');
+    for my $ua ($UA, 'curl/8', 'Feedfetcher (RSS reader; value-research-desk)') { $x = `curl -sS -L --compressed --max-time 30 -A '$ua' -H 'Accept: application/rss+xml, application/xml, text/xml' -w '
+HTTPCODE=%{http_code}' '$f->{feed}' 2>/dev/null` // ''; ($code) = $x =~ /HTTPCODE=(\d+)\s*$/; last if $x =~ /<item>/; sleep 1; }
+    $feed_codes{$code // 'none'}++ unless $x =~ /<item>/;
+    utf8::decode($x); my ($n, $h) = (0, 0);
     while ($x =~ m{<item>(.*?)</item>}gs) { my $i = $1; $n++;
       my %g; for my $tag (qw(title description link pubDate content:encoded)) { my ($v) = $i =~ m{<\Q$tag\E[^>]*>(.*?)</\Q$tag\E>}s; $v //= ''; $v =~ s/^<!\[CDATA\[|\]\]>$//g; $g{$tag} = $v; }
       my $head = "$g{title} . $g{description}"; (my $body = $g{'content:encoded'}) =~ s/<[^>]+>/ /g;
@@ -217,7 +221,7 @@ my @subs_meta; my $sub_hits = 0;
     push @subs_meta, { name => $f->{name}, tag => ($f->{tag} // "value"), url => $f->{url}, posts => $n, hits => $h }; $sub_hits += $h; sleep 0.3;
   }
   for my $s (@S) { next unless $s->{subs}; my @x = sort { ($a->{w} eq 'title' ? 0 : 1) <=> ($b->{w} eq 'title' ? 0 : 1) } @{$s->{subs}}; $s->{subs} = [@x[0 .. ($#x < 5 ? $#x : 5)]]; }
-  note("substack: ".scalar(@$cfg)." feeds, ".scalar(grep { $_->{posts} } @subs_meta)." readable, $sub_hits stock mentions");
+  note("substack: ".scalar(@$cfg)." feeds, ".scalar(grep { $_->{posts} } @subs_meta)." readable, $sub_hits stock mentions".(%feed_codes ? "; unreadable feeds by HTTP status: ".join(', ', map { "$_ x$feed_codes{$_}" } sort keys %feed_codes) : ""));
 }
 
 my $xtok = $ENV{X_BEARER_TOKEN} // '';
