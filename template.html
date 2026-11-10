@@ -108,6 +108,10 @@ summary{cursor:pointer;color:var(--ink2)}
     </div>
   </div>
   <div class="card" id="fac" style="margin-bottom:12px"></div>
+  <details class="card" id="wcard" style="margin:0 0 12px">
+    <summary><b>Score weights</b> <span class="small" id="wsum"></span></summary>
+    <div id="wbody" style="margin-top:10px"></div>
+  </details>
   <div class="card">
     <div class="filters">
       <select id="fv" aria-label="Verdict"></select>
@@ -134,6 +138,27 @@ var VO=['agree','disagree','quiet','uncovered','crowded','other'];
 var GV={inflect:['Inflecting: strong and accelerating','--c-agree'],compound:['Strong, not accelerating','--c-quiet'],early:['Early signs: accelerating','--c-uncovered'],other:['Neither','--c-other'],na:['Not scored','--c-other']};
 var GVO=['inflect','compound','early','other'];
 var st={lens:'growth',m:'SPX',sort:'gs',dir:-1,open:null,v:'',s:'',q:'',r:false};
+var WD={growth:{g:30,m:20,r:20,p:15,s:10,z:5},value:{ey:30,ev:25,fc:20,bk:15,dv:10}};
+var WL={growth:[['g','Revenue growth and acceleration'],['m','Margins (gross margin, Rule of 40)'],['r','Analyst estimate revisions'],['p','Price strength'],['s','Share gain vs industry peers'],['z','Smaller size']],value:[['ey','Forward earnings yield'],['ev','EV/EBITDA'],['fc','Free cash flow yield'],['bk','Price to book'],['dv','Dividend yield']]};
+var W=JSON.parse(JSON.stringify(WD));
+try{var sw0=JSON.parse(localStorage.getItem('vrd_weights')||'null');if(sw0)['growth','value'].forEach(function(l){Object.keys(WD[l]).forEach(function(k){if(sw0[l]&&typeof sw0[l][k]==='number')W[l][k]=Math.max(0,Math.min(50,sw0[l][k]))})})}catch(e){}
+function wtot(l){var t=0;Object.keys(W[l]).forEach(function(k){t+=W[l][k]});return t}
+function nw(l,k){var t=wtot(l);return t?Math.round(100*W[l][k]/t):0}
+function wdefault(l){return Object.keys(WD[l]).every(function(k){return W[l][k]===WD[l][k]})}
+function rescore(){S.forEach(function(s){if(s.stale)return;
+ var gp=s.gp||{},sw=0,sx=0,n=0;Object.keys(W.growth).forEach(function(k){if(gp[k]!=null){n++;sw+=W.growth[k];sx+=W.growth[k]*gp[k]}});
+ s.gs=(gp.g!=null&&s.rg!=null&&n>=4&&sw>0)?Math.round(sx/sw):null;
+ s.gv=s.gs==null?'na':s.gs>=75?((s.ra!=null&&s.ra>0)?'inflect':'compound'):(s.gs>=60&&s.ra!=null&&s.ra>=5)?'early':'other';
+ var p=s.p||{};sw=0;sx=0;n=0;Object.keys(W.value).forEach(function(k){if(p[k]==null||(k==='dv'&&!s.dy))return;n++;sw+=W.value[k];sx+=W.value[k]*p[k]});
+ s.val=(n>=3&&sw>0)?Math.round(sx/sw):null;var t=s.street,v=s.val;
+ s.verdict=v==null?'na':v>=70?(t==='bull'?'agree':t==='bear'?'disagree':t==='neutral'?'quiet':'uncovered'):(v<=30&&t==='bull')?'crowded':'other'})}
+function wlabels(){var l=st.lens;WL[l].forEach(function(r){var o=$('wv_'+r[0]);if(o)o.textContent=nw(l,r[0])+'%'});
+ $('wsum').textContent=wtot(l)?(wdefault(l)?'· default':'· custom')+': '+WL[l].map(function(r){return r[1].split(' (')[0]+' '+nw(l,r[0])+'%'}).join(', '):'· all weights are zero, so nothing is scored'}
+function weightsUI(){var l=st.lens;$('wbody').innerHTML='<div class="small" style="margin-bottom:8px">Drag to change how much each factor counts in the '+(G()?'growth inflection':'value')+' score. Weights are rescaled to add to 100%, scores and the labels above recalculate straight away, and your settings are remembered in this browser. Set a factor to zero to ignore it.</div>'+
+ '<div style="display:grid;grid-template-columns:minmax(180px,auto) minmax(120px,280px) 48px;gap:6px 12px;align-items:center;max-width:640px">'+WL[l].map(function(r){return '<label for="w_'+r[0]+'">'+r[1]+'</label><input type="range" id="w_'+r[0]+'" data-w="'+r[0]+'" min="0" max="50" step="5" value="'+W[l][r[0]]+'"><b id="wv_'+r[0]+'" style="font-variant-numeric:tabular-nums;text-align:right"></b>'}).join('')+'</div>'+
+ '<p style="margin:10px 0 0"><button class="btn" id="wreset" type="button">Reset to default</button></p>';wlabels()}
+function wchanged(){try{localStorage.setItem('vrd_weights',JSON.stringify(W))}catch(e){}rescore();wlabels();tiles();scatter();sidelists();table()}
+document.addEventListener('input',function(ev){var k=ev.target&&ev.target.dataset&&ev.target.dataset.w;if(!k)return;W[st.lens][k]=+ev.target.value;wchanged()});
 function G(){return st.lens==='growth'}
 function K(s){return G()?(s.gv||'na'):s.verdict}
 function VD(){return G()?GV:V}
@@ -253,7 +278,7 @@ function gdetail(s){var p=s.gp||{},pr=function(k){return p[k]==null?'not used':'
  var fl=[];if(s.qq&&Math.max.apply(null,s.qq)>40)fl.push('One quarter jumped '+Math.max.apply(null,s.qq).toFixed(0)+'% on the quarter before: check whether the growth is an acquisition, not organic');
  if(s.fm!=null&&s.fm<-20)fl.push('Burning cash: free cash flow margin '+s.fm.toFixed(0)+'%');if(s.rev!=null&&s.rev<1e8)fl.push('Very small revenue base ('+money(s.rev,s)+'): percentages exaggerate');
  if(s.cont)fl.push('Contested: short interest '+(s.sh==null?'n/a':s.sh.toFixed(1)+'%')+', consensus '+recL(s.rec)+(s.rec==null?'':' ('+s.rec.toFixed(2)+')'));if(s.h52!=null&&s.h52<-35)fl.push('Share price is '+(-s.h52).toFixed(0)+'% below its 52-week high');
- var h='<div><h3>Growth: why it scores '+(s.gs==null?'n/a':s.gs)+'</h3><div class="kv">'+M.map(function(m){return '<span>'+m[0]+' <small>('+m[3]+'%)</small></span><span>'+m[1]+'</span><span>'+m[2]+'</span>'}).join('')+'</div>'+
+ var h='<div><h3>Growth: why it scores '+(s.gs==null?'n/a':s.gs)+'</h3><div class="kv">'+M.map(function(m){return '<span>'+m[0]+' <small>('+nw('growth',['g','m','r','p','s','z'][M.indexOf(m)])+'%)</small></span><span>'+m[1]+'</span><span>'+m[2]+'</span>'}).join('')+'</div>'+
  (s.qq?'<p class="small">Revenue, quarter on quarter (oldest to latest): '+s.qq.map(function(x){return (x>0?'+':'')+x.toFixed(1)+'%'}).join(' → ')+'. Rule of 40 (revenue growth + FCF margin): '+(s.r40==null?'n/a':s.r40)+'.</p>':'')+
  (fl.length?'<ul>'+fl.map(function(x){return '<li class="flag">⚠ '+e(x)+'</li>'}).join('')+'</ul>':'')+
  '<h3 style="margin-top:10px">Market size and odds of taking share</h3>'+(s.pool?'<p style="font-size:13px;margin:0 0 6px">Industry: <b>'+e(s.ind)+'</b>. The '+s.pn+' listed peers in this universe turn over '+money(s.pool,s)+' a year; '+e(s.name)+' has '+s.shr.toFixed(1)+'% of that'+(s.sg==null?'.':' and is growing '+pc0(s.rg)+' against '+pc0(s.ig)+' for the group, a gap of '+(s.sg>0?'+':'')+s.sg.toFixed(1)+'pp.')+'</p><p style="font-size:13px;margin:0 0 6px">Odds of taking share: <b>'+e(s.like||'n/a')+'</b>'+(s.lpts!=null?' ('+s.lpts+' of 6 signals: growth gap, starting share under 10%, gross margin at or above the peer median'+(s.gmm!=null?' of '+s.gmm.toFixed(0)+'%':'')+', estimates rising, growth accelerating)':'')+'.</p>':'<p class="small">'+(s.ind?'Industry: '+e(s.ind)+'. ':'')+'Fewer than three listed peers in this universe, so no peer comparison.</p>')+
@@ -284,11 +309,12 @@ function filters(){var a=cur(),secs={};a.forEach(function(s){secs[s.sector]=1});
  $('fs').innerHTML='<option value="">All sectors</option>'+Object.keys(secs).sort().map(function(k){return '<option'+(st.s===k?' selected':'')+'>'+e(k)+'</option>'}).join('')}
 function all(){[].forEach.call(document.querySelectorAll('.tab'),function(t){t.setAttribute('aria-selected',t.dataset.lens?t.dataset.lens===st.lens:t.dataset.m===st.m)});
  $('lensd').textContent=G()?'Looks for companies whose growth is strong and speeding up, with high margins, rising analyst estimates, a rising share price and room to take share. Valuation is deliberately ignored here; use the value lens for that.':'Looks for stocks that are cheap against their sector, then checks whether published research agrees.';
- tiles();filters();scatter();sidelists();macro();if(G())$('fac').style.display='none';else factor();table()}
+ tiles();filters();weightsUI();scatter();sidelists();macro();if(G())$('fac').style.display='none';else factor();table()}
 function go(y){var s=S.filter(function(x){return x.y===y})[0];if(!s)return;st.v='';st.s='';st.q='';st.r=false;$('fq').value='';$('fr').checked=false;st.open=y;filters();scatter();table();var r=document.querySelector('tr.row.open');if(r)r.scrollIntoView({behavior:'smooth',block:'start'})}
 
 document.addEventListener('click',function(ev){var t=ev.target,x;
  if(x=t.closest('.tab')){if(x.dataset.lens){st.lens=x.dataset.lens;st.sort=G()?'gs':'val';st.dir=-1;st.v=''}else{st.m=x.dataset.m;st.s=''}st.open=null;try{history.replaceState(null,'','#'+st.lens+'-'+st.m)}catch(e){}all();return}
+ if(t.id==='wreset'){W[st.lens]=JSON.parse(JSON.stringify(WD[st.lens]));weightsUI();wchanged();return}
  if(x=t.closest('[data-go]')){ev.preventDefault();go(x.dataset.go);return}
  if(x=t.closest('circle[data-y]')){go(x.dataset.y);return}
  if(x=t.closest('th[data-k]')){var k=x.dataset.k;if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=(k==='code'||k==='name'||k==='fpe'||k==='eveb'||k==='pb'||k==='rec'||k==='verdict'||k==='shr')?1:-1}table();return}
@@ -315,7 +341,7 @@ $('method').innerHTML='<p><b>Growth inflection score (0 to 100).</b> Each stock 
 '<p><b>Limits.</b> Yahoo data has gaps and occasional errors, especially for ASX stocks that report in another currency, banks and insurers (EV/EBITDA and FCF do not apply) and REITs. Consensus numbers are averages of broker views, not the reports themselves. Name matching in Substack posts can produce false positives.</p>'+
 '<p><b>Value factor.</b> Monthly Fama/French factors from the Ken French Data Library (US from July 1963; Asia Pacific ex Japan from July 1990). Bear markets are peak-to-trough falls of 20% or more in the monthly total-return market index. The value spread is computed here from the library\'s NYSE book-to-market breakpoints and is a simple proxy, not an official series.</p>'+
 (D.log?'<p class="small">Last run: '+D.log.map(e).join(' · ')+'</p>':'');
-all();
+rescore();all();
 })();
 </script>
 </body>
