@@ -64,6 +64,8 @@ tr.row:hover,tr.row.open{background:var(--sel)}
 details{margin-top:12px}
 summary{cursor:pointer;color:var(--ink2)}
 .h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px;font-weight:600}
+.grid2{align-items:start}
+#fac th,#fac td{white-space:normal}
 #fac .tile{background:var(--page);border-radius:10px;padding:10px 12px}
 .foot{color:var(--muted);font-size:12px;margin-top:16px}
 </style>
@@ -161,8 +163,9 @@ function scatter(){var a=shown().filter(function(s){return s.val!=null&&s.up!=nu
 function sidelists(){var a=cur().filter(function(s){return s.verdict==='disagree'}).sort(function(p,q){return q.val-p.val}).slice(0,6);
  $('dis').innerHTML=a.length?a.map(function(s){return '<li><a href="#" data-go="'+e(s.y)+'"><b>'+e(s.code)+'</b> '+e(s.name)+'</a><br><span class="small">Value score '+s.val+' · consensus '+recL(s.rec)+' ('+f(s.rec,2)+', '+(s.nan||0)+' analysts) · target '+(s.up>0?'+':'')+f(s.up,1,'%')+(s.flags&&s.flags.length?' · <span class="flag">'+e(s.flags[0])+'</span>':'')+'</span></li>'}).join(''):'<li class="small">None in this market right now.</li>';
  var p=[];cur().forEach(function(s){(s.subs||[]).forEach(function(x){p.push({s:s,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});
- var seen={};p=p.filter(function(o){var k=o.x.u+o.s.y;if(seen[k])return false;seen[k]=1;return true}).slice(0,6);
- $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions <a href="#" data-go="'+e(o.s.y)+'">'+e(o.s.code)+'</a> ('+dot(o.s.verdict)+' '+e(V[o.s.verdict][0])+')</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
+ var by={},g=[];p.forEach(function(o){var k=o.x.u;if(!by[k]){by[k]={x:o.x,ss:[]};g.push(by[k])}if(by[k].ss.indexOf(o.s)<0)by[k].ss.push(o.s)});
+ g.forEach(function(o){o.ss.sort(function(a,b){return (a.verdict==='other')-(b.verdict==='other')||(b.val||0)-(a.val||0)})});p=g.slice(0,6);
+ $('subl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.x.s)+(o.x.k&&o.x.k!=='value'?' ('+e(o.x.k)+')':'')+' · '+dstr(o.x.d)+' · mentions '+o.ss.slice(0,6).map(function(s){return dot(s.verdict)+' <a href="#" data-go="'+e(s.y)+'" title="'+e(V[s.verdict][0])+'">'+e(s.code)+'</a>'}).join(' ')+(o.ss.length>6?' +'+(o.ss.length-6)+' more':'')+'</span></li>'}).join(''):'<li class="small">No mentions of '+(st.m==='ASX'?'ASX 200':'S&amp;P 500')+' stocks in the latest posts of the tracked Substacks. Add publications in substacks.json.</li>'}
 
 function macro(){var p=[];(D.substacks||[]).forEach(function(f){if(f.tag==='macro'||f.tag==='thematic')(f.latest||[]).forEach(function(x){p.push({f:f,x:x})})});p.sort(function(a,b){return new Date(b.x.d)-new Date(a.x.d)});p=p.slice(0,5);
  $('macl').innerHTML=p.length?p.map(function(o){return '<li><a href="'+e(o.x.u)+'" target="_blank" rel="noopener">'+e(o.x.t)+'</a><br><span class="small">'+e(o.f.name)+' · '+dstr(o.x.d)+'</span></li>'}).join(''):'<li class="small">No macro or thematic feeds readable in the last run.</li>'}
